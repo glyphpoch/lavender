@@ -416,3 +416,733 @@ fn test_addressing_mode_3_register_postindexed() {
         assert_eq!(emulator.cpu.get_register_value(r1), 0x5000_0000);
     }
 }
+
+#[test]
+fn test_addressing_mode_1_immediate() {
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd   rot  imm8
+        // 0x1110_0011_1011_0000_0000_0000_1000_0000 - movs r0,0x80
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE3B0_0080);
+        assert_eq!(shifter_operand, 0x80);
+        assert_eq!(shifter_carry_out, true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        //   cond    opc  S Rn   Rd   rot  imm8
+        // 0b1110_0011_1011_0000_0000_0001_0000_0010 - movs r0,0x80000000
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE3B0_0102);
+        assert_eq!(shifter_operand, 0x8000_0000);
+        assert_eq!(shifter_carry_out, true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        //   cond    opc  S Rn   Rd   rot  imm8
+        // 0b1110_0011_1011_0000_0000_0100_0000_0011 - movs r0,3000000h
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE3B0_0403);
+        assert_eq!(shifter_operand, 0x0300_0000);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_register() {
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0000_0001 - movs r0,r1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0001);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xCCDD_EEFF);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0000_0001 - movs r0,r1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0001);
+        assert_eq!(shifter_operand, 0xCCDD_EEFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_lsl_immediate() {
+    // movs r0,r1,lsl 0h
+    // is actually the same as above ^
+    //
+    // movs r0,r1,lsl 1h
+    // r1 = 0x8000_0000
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1000_0001 - movs r0,r1,lsl 1h
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0081);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // movs r0,r1,lsl 2h
+    // r1 = 0xBFFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xBFFF_FFFF);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0000_0001 - movs r0,r1,lsl 2h
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0101);
+        assert_eq!(shifter_operand, 0xFFFF_FFFC);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_lsl_register() {
+    // movs r0,r1,lsl r2
+    // r2 = 0
+    // shifter_operand = r1
+    // shifter_carry_out = c_flag
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x1
+    // r1 = 0x8000_0000
+    // shifter_operand = 0
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+        emulator.cpu.set_register_value(r2, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x2
+    // r1 = 0xBFFF_FFFF
+    // shifter_operand = 0xFFFF_FFFC
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xBFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x2);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0xFFFF_FFFC);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0x20
+    // r1 = 0x1
+    // shifter_operand = 0
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x1);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x20
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0x21
+    // r1 = 0xFFFF_FFFF
+    // shifter_operand = 0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x21);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0001_0010 - movs r0,r1,lsl r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0211);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_lsr_immediate() {
+    // movs r0,r1,lsr 20h
+    // 0xE1B0_0021
+    //
+    // r1 = 0x8000_0000
+    // shifter_operand = 0
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0010_0001 - movs r0,r1,lsr 0x20
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0021);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0x7FFF_FFFF
+    // shifter_operand = 0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0010_0001 - movs r0,r1,lsr 0x20
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0021);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+
+    // movs r0,r1,lsr 1h
+    // 0xE1B0_00A1
+    //
+    // r1 = 0x3
+    // shifter_operand = 0x1
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x3);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr 1h
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_00A1);
+        assert_eq!(shifter_operand, 0x1);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0x7FFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr 1h
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_00A1);
+        assert_eq!(shifter_operand, 0x7FFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_lsr_register() {
+    // movs r0,r1,lsr r2
+    // 0xE1B0_0231
+    //
+    // r2 = 0xFFFF_FF00
+    // r1 = 0xAABB_CCDD
+    // shifter_operand = r1
+    // shifter_carry_out = c_flag
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FF00);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, true);
+    }
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FF00);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0x2
+    // r1 = 0x6
+    // shifter_operand = 0x1
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x6);
+        emulator.cpu.set_register_value(r2, 0x2);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0x1);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x20
+    // r1 = 0x8000_0000
+    // shifter_operand = 0x0
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x20
+    // r1 = 0x7FFF_FFFF
+    // shifter_operand = 0x0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0x21
+    // r1 = 0xFFFF_FFFF
+    // shifter_operand = 0x0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x21);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1010_0001 - movs r0,r1,lsr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0231);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_asr_immediate() {
+    // movs r0,r1,asr 20h
+    // 0xE1B0_0041
+    //
+    // r1 = 0x8000_0000
+    // shifter_operand = 0xFFFF_FFFF
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0100_0001 - movs r0,r1,asr 0x20
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0041);
+        assert_eq!(shifter_operand, 0xFFFF_FFFF);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0x7FFF_FFFF
+    // shifter_operand = 0x0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0100_0001 - movs r0,r1,asr 0x20
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0041);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+
+    // movs r0,r1,asr 2h
+    // 0xE1B0_0141
+    //
+    // r1 = 0x6
+    // shifter_operand = 0x1
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x6);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr 0x2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0141);
+        assert_eq!(shifter_operand, 0x1);
+        assert_eq!(shifter_carry_out, true);
+    }
+
+    // movs r0,r1,asr 1h
+    // 0xE1B0_00C1
+    //
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0xFFFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_00C1);
+        assert_eq!(shifter_operand, 0xFFFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_asr_register() {
+    // movs r0,r1,asr r2
+    // 0xE1B0_0251
+    //
+    // r2 = 0
+    // shifter_operand = r1
+    // shifter_carry_out = c_flag
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0x0);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, true);
+    }
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0x0);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 1
+    // r1 = 0x1
+    // shifter_operand = 0x0
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x1);
+        emulator.cpu.set_register_value(r2, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 1
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0xFFFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+        emulator.cpu.set_register_value(r2, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0xFFFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 32
+    // r1 = 0x7FFF_FFFF
+    // shifter_operand = 0
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0x0);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 32
+    // r1 = 0x8000_0000
+    // shifter_operand = 0xFFFF_FFFF
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+        emulator.cpu.set_register_value(r2, 0x20);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0001_0100_0001 - movs r0,r1,asr r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0251);
+        assert_eq!(shifter_operand, 0xFFFF_FFFF);
+        assert_eq!(shifter_carry_out, true);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_ror_immediate() {
+    // movs r0,r1,ror 1h
+    // 0xE1B0_00E1
+    //
+    // r1 = 0x1
+    // shifter_operand = 0x8000_0000
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1110_0001 - movs r0,r1,ror 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_00E1);
+        assert_eq!(shifter_operand, 0x8000_0000);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0x7FFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_1110_0001 - movs r0,r1,ror 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_00E1);
+        assert_eq!(shifter_operand, 0x7FFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_ror_register() {
+    // movs r0,r1,ror r2
+    // 0xE1B0_0271
+    //
+    // r2 = 0xFFFF_FF00
+    // r1 = 0xAABB_CCDD
+    // shifter_operand = r1
+    // shifter_carry_out = c_flag
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FF00);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, true);
+    }
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xAABB_CCDD);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FF00);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0xAABB_CCDD);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0xFFFF_FFE0
+    // r1 = 0x8000_0000
+    // shifter_operand = 0x8000_0000
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FFE0);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0x8000_0000);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0xFFFF_FFE0
+    // r1 = 0x7FFF_FFFF
+    // shifter_operand = 0x7FFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FFE0);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0x7FFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r2 = 0x1
+    // r1 = 0x3
+    // shifter_operand = 0x8000_0001
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x3);
+        emulator.cpu.set_register_value(r2, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0x8000_0001);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r2 = 0x1
+    // r1 = 0xFFFF_FFFE
+    // shifter_operand = 0x7FFF_FFFF
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFE);
+        emulator.cpu.set_register_value(r2, 0x1);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0010_0111_0001 - movs r0,r1,ror r2
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0271);
+        assert_eq!(shifter_operand, 0x7FFF_FFFF);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+
+#[test]
+fn test_addressing_mode_1_rrx() {
+    // This is actually just movs r0,r1,rrx - the immediate parameter is always 0
+    // movs r0,r1,rrx 0x1
+    // 0xE1B0_0061
+    //
+    // r1 = 0x3
+    // c_flag = true
+    // shifter_operand = 0x8000_0001
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x3);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0110_0001 - movs r0,r1,rrx 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0061);
+        assert_eq!(shifter_operand, 0x8000_0001);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0x2
+    // c_flag = true
+    // shifter_operand = 0x8000_0001
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x2);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0110_0001 - movs r0,r1,rrx 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0061);
+        assert_eq!(shifter_operand, 0x8000_0001);
+        assert_eq!(shifter_carry_out, false);
+    }
+    //
+    // r1 = 0x3
+    // c_flag = false
+    // shifter_operand = 0x8000_0001
+    // shifter_carry_out = true
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x3);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0110_0001 - movs r0,r1,rrx 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0061);
+        assert_eq!(shifter_operand, 0x1);
+        assert_eq!(shifter_carry_out, true);
+    }
+    //
+    // r1 = 0x2
+    // c_flag = false
+    // shifter_operand = 0x1
+    // shifter_carry_out = false
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_register_value(r1, 0x2);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    opc  S Rn   Rd             Rm
+        // 0b1110_0001_1011_0000_0000_0000_0110_0001 - movs r0,r1,rrx 0x1
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(&mut emulator, 0xE1B0_0061);
+        assert_eq!(shifter_operand, 0x1);
+        assert_eq!(shifter_carry_out, false);
+    }
+}
+

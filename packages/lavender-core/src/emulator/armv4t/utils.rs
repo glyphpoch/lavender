@@ -54,6 +54,155 @@ pub fn process_shifter_operand(emulator: &mut Emulator, instruction: u32) -> u32
     }
 }
 
+pub fn process_shifter_operand_tmp(emulator: &mut Emulator, instruction: u32) -> (u32, bool) {
+    let is_immediate_value = instruction >> 25 & 1 > 0;
+
+    if is_immediate_value {
+        // Get the shift amount and the value from the instruction
+        let rotate_imm = instruction >> 8 & 0xf;
+        let shifter_operand = (instruction & 0xff).rotate_right(rotate_imm * 2);
+        let shifter_carry_out = if rotate_imm == 0 {
+            emulator.cpu.get_c()
+        } else {
+            shifter_operand & 0x8000_0000 == 0x8000_0000
+        };
+        (shifter_operand, shifter_carry_out)
+    } else {
+        // Determine what shifting mode will be used
+        // 00: LSL Logical shift left
+        // 01: LSR Logical shift right
+        // 10: ASR Arithmetic shift right (sign extending)
+        // 11: ROR Rotate right
+        // 11, but with 0 for shift value: RRX Shift right 1 and extend.
+        let shift_mode = instruction >> 5 & 3;
+        // Determine if we need to fetch the shift amount from the register
+        let is_register_shift = instruction >> 4 & 1 > 0;
+        // Get the value from the register
+        let value = emulator
+            .cpu
+            .get_register_value(RegisterNames::try_from(instruction & 15).unwrap());
+
+        let shift = if is_register_shift {
+            // Check to make sure that extension space instructions don't end
+            // up here somehow. That is unpredictable behavior.
+            let extension_space_identifier = instruction >> 7 & 1;
+            assert_eq!(
+                extension_space_identifier,
+                0,
+                "'Multiplies' extension space instructions should not enter process_shifter_operand"
+            );
+
+            // Anything above the bottom 8 bits should be ignored (because they
+            // wouldn't matter anyway)
+            0xff & emulator
+                .cpu
+                .get_register_value(RegisterNames::try_from(instruction >> 8 & 15).unwrap())
+        } else {
+            instruction >> 7 & 0x1f
+        };
+
+        match (shift_mode, shift) {
+            (0, 0) => (value, emulator.cpu.get_c()),
+            (0, _) => {
+                let shifter_operand = if shift < 32 {
+                    value << shift
+                } else {
+                    0
+                };
+                let shifter_carry_out = if is_register_shift {
+                    if shift < 32 {
+                        (value >> (32 - shift) & 0x1) == 0x1
+                    } else if shift == 32 {
+                        value & 0x1 == 0x1
+                    } else {
+                        false
+                    }
+                } else {
+                    (value >> (32 - shift) & 0x1) == 0x1
+                };
+                (shifter_operand, shifter_carry_out)
+            },
+            (1, _) => {
+                //let shifter_operand = value >> shift;
+                let (shifter_operand, shifter_carry_out) = if is_register_shift {
+                    if shift == 0 {
+                        (value, emulator.cpu.get_c())
+                    } else if shift < 32 {
+                        ((value >> shift),
+                        ((value >> (shift - 1)) & 0x1) == 0x1)
+                    } else if shift == 32 {
+                        (0, value & 0x8000_0000 == 0x8000_0000)
+                    } else {
+                        (0, false)
+                    }
+                } else {
+                    if shift == 0 {
+                        // TODO: shifter_operand = 0;
+                        (0, value & 0x8000_0000 == 0x8000_0000)
+                    } else {
+                        (value >> shift, (value >> (shift - 1)) & 0x1 == 0x1)
+                    }
+                };
+                (shifter_operand, shifter_carry_out)
+            },
+            (2, _) => {
+                if is_register_shift {
+                    if shift == 0 {
+                        (value, emulator.cpu.get_c())
+                    } else if shift < 32 {
+                        let shifter_operand = ((value as i32) >> shift) as u32;
+                        let shifter_carry_out = value >> (shift - 1) & 0x1 == 0x1;
+                        (shifter_operand, shifter_carry_out)
+                    } else {
+                        if value & 0x8000_0000 == 0 {
+                            (0, false)
+                        } else {
+                            (0xFFFF_FFFF, true)
+                        }
+                    }
+                } else {
+                    if shift == 0 {
+                        if value & 0x8000_0000 == 0x8000_0000 {
+                            (0xFFFF_FFFF, true)
+                        } else {
+                            (0, false)
+                        }
+                    } else {
+                        let shifter_operand = ((value as i32) >> shift) as u32;
+                        let shifter_carry_out = value >> (shift - 1) & 0x1 == 0x1;
+                        (shifter_operand, shifter_carry_out)
+                    }
+                }
+            },
+            (3, _) => {
+                if is_register_shift {
+                    if shift == 0 {
+                        (value, emulator.cpu.get_c())
+                    } else if shift & 0x1f == 0 {
+                        (value, value & 0x8000_0000 == 0x8000_0000)
+                    } else {
+                        let shifter_operand = value.rotate_right(shift & 0xf);
+                        let shifter_carry_out = value >> ((shift & 0xf) - 1) & 0x1 == 0x1;
+                        (shifter_operand, shifter_carry_out)
+                    }
+                } else {
+                    if shift == 0 {
+                        let shifter_operand = (if emulator.cpu.get_c() { 1 << 31 } else { 0 }) | (value >> 1);
+                        let shifter_carry_out = value & 0x1 == 0x1;
+                        (shifter_operand, shifter_carry_out)
+                    } else {
+                        // TODO: Can we somehow merge this with register code
+                        let shifter_operand = value.rotate_right(shift & 0xf);
+                        let shifter_carry_out = value >> ((shift & 0xf) - 1) & 0x1 == 0x1;
+                        (shifter_operand, shifter_carry_out)
+                    }
+                }
+            },
+            (_, _) => panic!("Shift mode not matched for shifter_operand."),
+        }
+    }
+}
+
 pub fn process_addressing_mode(emulator: &mut Emulator, instruction: u32) -> (u32, AddressingType) {
     let is_immediate_value = instruction >> 25 & 1 == 0;
 
