@@ -10,6 +10,72 @@ fn decode_adc() {
 }
 
 #[test]
+fn behavior_adc() {
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x7FFF_FFFF + 0x1 + c_flag == 0x8000_0001
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x1);
+        emulator.cpu.set_nzcv(false, false, true, false);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0000_1011_0001_0000_0000_0000_0010 - adcs r0,r1,r2
+        process_instruction(&mut emulator, 0xE0B1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x8000_0001);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x1);
+        assert_eq!(emulator.cpu.get_n(), true);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        //assert_eq!(emulator.cpu.get_v(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xFFFF_FFFF + 0x2 == 0x1
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x2);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0000_1011_0001_0000_0000_0000_0010 - adcs r0,r1,r2
+        process_instruction(&mut emulator, 0xE0B1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x2);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), true);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xFFFF_FFFF + 0x1 == 0x0
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x1);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0000_1011_0001_0000_0000_0000_0010 - adcs r0,r1,r2
+        process_instruction(&mut emulator, 0xE0B1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x1);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), true);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+}
+
+#[test]
 fn decode_add() {
     assert_eq!(decode_instruction(0x0_08_000_0_0) as usize, add as usize);
 }
@@ -79,6 +145,91 @@ fn behavior_b() {
 #[test]
 fn decode_bic() {
     assert_eq!(decode_instruction(0x0_1c_000_0_0) as usize, bic as usize);
+}
+
+#[test]
+fn behavior_bic() {
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x0300_0001 & !0x0 == 0x0300_0001
+        emulator.cpu.set_register_value(r1, 0x0300_0001);
+        emulator.cpu.set_register_value(r2, 0x0);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0011_1101_0001_0000_0000_0000_0001 - bics r0,r1,r2
+        process_instruction(&mut emulator, 0xE1D1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0300_0001);
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0001);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xFFFF_FFFF & !0x7FFF_FFFF == 0x8000_0000
+        // Also check if overflow flags remains unaffected
+        emulator.cpu.set_register_value(r1, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x7FFF_FFFF);
+        emulator.cpu.set_nzcv(false, false, false, true);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0011_1101_0001_0000_0000_0000_0001 - bics r0,r1,r2
+        process_instruction(&mut emulator, 0xE1D1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x8000_0000);
+        assert_eq!(emulator.cpu.get_n(), true);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xAAAA_AAAA & !0xFFFF_FFFF == 0x0
+        // Also check if overflow flags remains unaffected
+        emulator.cpu.set_register_value(r1, 0xAAAA_AAAA);
+        emulator.cpu.set_register_value(r2, 0xFFFF_FFFF);
+        emulator.cpu.set_nzcv(false, false, false, true);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0011_1101_0001_0000_0000_0000_0001 - bics r0,r1,r2
+        process_instruction(&mut emulator, 0xE1D1_0002);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xAAAA_AAAA);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x7FFF_FFFF & !0x0000_0007 == 0x3FFF_FFFF
+        // Also check if overflow flags remains unaffected
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r2, 0x0000_0007);
+        emulator.cpu.set_nzcv(false, false, false, false);
+
+        //   cond    P UBWL Rn   Rd   offset12
+        // 0x1110_0011_1101_0001_0000_1111_0000_0001 - bics r0,r1,r2,lsl 0x1E
+        process_instruction(&mut emulator, 0xE1D1_0F02);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x3FFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), true);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
 }
 
 #[test]

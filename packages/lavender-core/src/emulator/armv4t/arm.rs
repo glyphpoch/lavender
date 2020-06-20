@@ -284,7 +284,7 @@ pub mod instructions {
         // Get the instruction operands
         let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let shifter_operand = process_shifter_operand(emulator, instruction);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
 
         let (result, overflow) = emulator
             .cpu
@@ -297,7 +297,8 @@ pub mod instructions {
                 result >> 31 & 1 > 0,
                 if result == 0 { true } else { false },
                 // xxx: one of these two is incorrect
-                overflow, // c: an unsigned overflow occured
+                (emulator.cpu.get_register_value(operand_register) as u64)
+                    .wrapping_add(shifter_operand as u64 + carry_amount as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
                 overflow, // v: a signed overflow occured
             );
         }
@@ -408,7 +409,7 @@ pub mod instructions {
         // Get the instruction operands
         let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let shifter_operand = process_shifter_operand(emulator, instruction);
+        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(emulator, instruction);
 
         let result = emulator.cpu.get_register_value(operand_register) & !shifter_operand;
 
@@ -421,8 +422,8 @@ pub mod instructions {
                 emulator.cpu.set_nzcv(
                     result >> 31 & 1 > 0,
                     if result == 0 { true } else { false },
-                    false, // xxx: c: shifter_carry_out
-                    false, // xxx: this actually shouldn't be mutated at all
+                    shifter_carry_out,
+                    emulator.cpu.get_v(),
                 );
             }
         }
