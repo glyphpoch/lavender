@@ -1,7 +1,7 @@
 use crate::emulator::{cpu::*, Emulator};
 use num_enum::TryFromPrimitive;
-use std::convert::TryFrom;
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 
 pub fn process_shifter_operand(emulator: &mut Emulator, instruction: u32) -> u32 {
     let is_immediate_value = instruction >> 25 & 1 > 0;
@@ -167,13 +167,11 @@ where
 
         match (shift_mode, shift) {
             (ShiftMode::LSL, 0) => (value, emulator.cpu.get_c()),
-            (ShiftMode::LSL, _) => {
-                match shift.cmp(&32) {
-                    Ordering::Less => (value << shift, value.is_bit_set(32 - shift)),
-                    Ordering::Equal => (0, value.is_bit_set(0)),
-                    Ordering::Greater => (0, false),
-                }
-            }
+            (ShiftMode::LSL, _) => match shift.cmp(&32) {
+                Ordering::Less => (value << shift, value.is_bit_set(32 - shift)),
+                Ordering::Equal => (0, value.is_bit_set(0)),
+                Ordering::Greater => (0, false),
+            },
             (ShiftMode::LSR, _) => {
                 //let shifter_operand = value >> shift;
                 if is_register_shift && shift == 0 {
