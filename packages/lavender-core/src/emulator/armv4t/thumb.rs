@@ -24,11 +24,10 @@ pub fn decode_instruction(instruction: u16) -> fn(&mut Emulator, u16) -> u32 {
             match subcategory {
                 0b000 => {
                     // Data processing register
-                    let opcode = instruction >> 6 & 0xf;
+                    let _opcode = instruction >> 6 & 0xf;
 
-                    match opcode {
-                        _ => placeholder,
-                    }
+                    // TODO: match on opcode here
+                    placeholder
                 }
                 0b001 => placeholder, // Special data processing and branch/exchange
                 0b010 | 0b011 => placeholder, // Load from literal pool

@@ -344,7 +344,7 @@ pub mod instructions {
             } else {
                 emulator.cpu.set_nzcv(
                     result >> 31 & 1 > 0,
-                    if result == 0 { true } else { false },
+                    result == 0,
                     // xxx: one of these two is incorrect
                     overflow, // c: an unsigned overflow occured
                     overflow, // v: a signed overflow occured
@@ -382,7 +382,7 @@ pub mod instructions {
             } else {
                 emulator.cpu.set_nzcv(
                     result >> 31 & 1 > 0,
-                    if result == 0 { true } else { false },
+                    result == 0,
                     shifter_carry_out,    // xxx: c: shifter_carry_out
                     emulator.cpu.get_v(), // xxx: this actually shouldn't be mutated at all
                 );
@@ -440,7 +440,7 @@ pub mod instructions {
             } else {
                 emulator.cpu.set_nzcv(
                     result >> 31 & 1 > 0,
-                    if result == 0 { true } else { false },
+                    result == 0,
                     shifter_carry_out,
                     emulator.cpu.get_v(),
                 );
