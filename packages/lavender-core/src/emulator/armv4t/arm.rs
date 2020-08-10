@@ -491,7 +491,34 @@ pub mod instructions {
     }
 
     /// Compare negative
-    pub fn cmn(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn cmn(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            alu_out = Rn + shifter_operand
+            N Flag = alu_out[31]
+            Z Flag = if alu_out == 0 then 1 else 0
+            C Flag = CarryFrom(Rn + shifter_operand)
+            V Flag = OverflowFrom(Rn + shifter_operand)
+        */
+
+        // Get the instruction operands
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let (alu_out, overflow) = (operand_value as i32).overflowing_add(shifter_operand as i32);
+        let alu_out = alu_out as u32;
+
+        let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
+        // Update flags if necessary
+        emulator.cpu.set_nzcv(
+            alu_out.is_bit_set(31),
+            alu_out == 0,
+            // TODO: simplify/improve
+            (operand_value as u64).wrapping_add(shifter_operand as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
+            overflow, // v: signed overflow occured
+        );
+
         1
     }
 
