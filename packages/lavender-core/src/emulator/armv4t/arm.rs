@@ -286,11 +286,6 @@ pub mod instructions {
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
         let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
 
-        let (result, overflow) = emulator
-            .cpu
-            .get_register_value(operand_register)
-            .overflowing_add(shifter_operand + carry_amount);
-
         let result = emulator
             .cpu
             .get_register_value(operand_register)
