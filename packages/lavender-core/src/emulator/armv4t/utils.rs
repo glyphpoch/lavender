@@ -359,12 +359,12 @@ pub fn addition_overflow(first: u32, second: u32, result: u32) -> bool {
     // | first[31] | second[31] | result[31] | overflow |
     // |-----------|------------|------------|----------|
     // | false     | false      | false      | false    |
-    // | false     | false      | true       | true     |
+    // | false     | false      | true       | true     | <<
     // | false     | true       | false      | false    |
     // | false     | true       | true       | false    |
     // | true      | false      | false      | false    |
     // | true      | false      | true       | false    |
-    // | true      | true       | false      | true     |
+    // | true      | true       | false      | true     | <<
     // | true      | true       | true       | false    |
     //
     // The first condition can be checked by XOR-ing the operands of the addition - since XOR will
@@ -396,6 +396,31 @@ pub fn addition_overflow(first: u32, second: u32, result: u32) -> bool {
     // 0b1111_1111 + 0b1000_0000 + c_flag(0b1) = 0b1000_0000
     //
     (!(first ^ second) & (second ^ result)).is_bit_set(31)
+}
+
+#[inline]
+pub fn substraction_overflow(first: u32, second: u32, result: u32) -> bool {
+    // Overflow check for substraction is basically the same as the overflow check for addition
+    // since substraction is just addition with the second parameter negated.
+    //
+    // This changes the truth table (32-bit) a bit:
+    // | first[31] | second[31] | result[31] | overflow |
+    // |-----------|------------|------------|----------|
+    // | false     | false      | false      | false    |
+    // | false     | false      | true       | false    |
+    // | false     | true       | false      | false    |
+    // | false     | true       | true       | true     | <<
+    // | true      | false      | false      | true     | <<
+    // | true      | false      | true       | false    |
+    // | true      | true       | false      | false    |
+    // | true      | true       | true       | false    |
+    //
+    // Sign bits of the substraction operands now need to be different - XOR returns true. The
+    // second condition remains unchanged, but only the first operand can be XOR'ed with the
+    // result. Otherwise the second parameter would have to be negated first, resulting in an
+    // additional operation.
+    //
+    ((first ^ second) & (first ^ result)).is_bit_set(31)
 }
 
 pub fn get_data_processing_operands(

@@ -697,7 +697,7 @@ pub mod instructions {
     pub fn rsc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn sbc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn sbc(emulator: &mut Emulator, instruction: u32) -> u32 {
         /*
         if ConditionPassed(cond) then
             Rd = Rn - shifter_operand - NOT(C Flag)
@@ -711,6 +711,46 @@ pub mod instructions {
                 C Flag = NOT BorrowFrom(Rn - shifter_operand - NOT(C Flag))
                 V Flag = OverflowFrom(Rn - shifter_operand - NOT(C Flag))
         */
+
+        let carry_amount = if !emulator.cpu.get_c() { 1 } else { 0 };
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        // Get the instruction operands
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let result = emulator
+            .cpu
+            .get_register_value(operand_register)
+            .wrapping_sub(shifter_operand)
+            .wrapping_sub(carry_amount);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(RegisterNames::cpsr, emulator.cpu.get_register_value(RegisterNames::spsr));
+            }
+            else {
+                panic!("SBC: unpredictable");
+            }
+        }
+        else if should_update_flags {
+            let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
+            // Update flags if necessary
+            emulator.cpu.set_nzcv(
+                result.is_bit_set(31),
+                result == 0,
+                // TODO: clean this up
+                (emulator.cpu.get_register_value(operand_register) as u64)
+                    .wrapping_add((!shifter_operand) as u64 + tmp_carry as u64) > 0xFFFF_FFFF, // c: NOT BorrowFrom
+                substraction_overflow(emulator.cpu.get_register_value(operand_register), shifter_operand, result), // v: signed overflow occured
+            );
+        }
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
         1
     }
     pub fn smlal(_emulator: &mut Emulator, _instruction: u32) -> u32 {
