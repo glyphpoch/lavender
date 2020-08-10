@@ -492,11 +492,31 @@ pub mod instructions {
     }
 
     /// Compare
-    pub fn cmp(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn cmp(emulator: &mut Emulator, instruction: u32) -> u32 {
         // alu_out = Rn - shifter_operand
         // N Flag = alu_out[31]
         // Z Flag = if alu_out == 0 then 1 else 0
-        // C Flag = NOT BorrowFrom(Rn - shifter_operand) V Flag = OverflowFrom(Rn - shifter_operand)
+        // C Flag = NOT BorrowFrom(Rn - shifter_operand)
+        // V Flag = OverflowFrom(Rn - shifter_operand)
+
+        // Get the instruction operands
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let (alu_out, overflow) = (operand_value as i32).overflowing_sub(shifter_operand as i32);
+        let alu_out = alu_out as u32;
+
+        let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
+        // Update flags if necessary
+        emulator.cpu.set_nzcv(
+            alu_out.is_bit_set(31),
+            alu_out == 0,
+            // TODO: this was done using a wrapping_add before and it still is in other
+            // instructions, however that implementation might be broken when comparing two zeroes.
+            operand_value >= shifter_operand, // c: NOT BorrowFrom
+            overflow,                         // v: signed overflow occured
+        );
 
         1
     }
