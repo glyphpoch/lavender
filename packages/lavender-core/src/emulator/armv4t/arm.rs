@@ -299,20 +299,26 @@ pub mod instructions {
 
         if should_update_flags && destination_register == RegisterNames::r15 {
             if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(RegisterNames::cpsr, emulator.cpu.get_register_value(RegisterNames::spsr));
-            }
-            else {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
                 panic!("ADC: unpredictable");
             }
-        }
-        else if should_update_flags {
+        } else if should_update_flags {
             // Update flags if necessary
             emulator.cpu.set_nzcv(
                 result >> 31 & 1 > 0,
                 result == 0,
                 (emulator.cpu.get_register_value(operand_register) as u64)
-                    .wrapping_add(shifter_operand as u64 + carry_amount as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
-                addition_overflow(emulator.cpu.get_register_value(operand_register), shifter_operand, result), // v: a signed overflow occured
+                    .wrapping_add(shifter_operand as u64 + carry_amount as u64)
+                    > 0xFFFF_FFFF, // c: an unsigned overflow occured
+                addition_overflow(
+                    emulator.cpu.get_register_value(operand_register),
+                    shifter_operand,
+                    result,
+                ), // v: a signed overflow occured
             );
         }
 
@@ -422,7 +428,8 @@ pub mod instructions {
         // Get the instruction operands
         let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let (shifter_operand, shifter_carry_out) = process_shifter_operand_tmp(emulator, instruction);
+        let (shifter_operand, shifter_carry_out) =
+            process_shifter_operand_tmp(emulator, instruction);
 
         let result = emulator.cpu.get_register_value(operand_register) & !shifter_operand;
 
@@ -728,13 +735,14 @@ pub mod instructions {
 
         if should_update_flags && destination_register == RegisterNames::r15 {
             if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(RegisterNames::cpsr, emulator.cpu.get_register_value(RegisterNames::spsr));
-            }
-            else {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
                 panic!("SBC: unpredictable");
             }
-        }
-        else if should_update_flags {
+        } else if should_update_flags {
             let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
             // Update flags if necessary
             emulator.cpu.set_nzcv(
@@ -742,8 +750,13 @@ pub mod instructions {
                 result == 0,
                 // TODO: clean this up
                 (emulator.cpu.get_register_value(operand_register) as u64)
-                    .wrapping_add((!shifter_operand) as u64 + tmp_carry as u64) > 0xFFFF_FFFF, // c: NOT BorrowFrom
-                substraction_overflow(emulator.cpu.get_register_value(operand_register), shifter_operand, result), // v: signed overflow occured
+                    .wrapping_add((!shifter_operand) as u64 + tmp_carry as u64)
+                    > 0xFFFF_FFFF, // c: NOT BorrowFrom
+                substraction_overflow(
+                    emulator.cpu.get_register_value(operand_register),
+                    shifter_operand,
+                    result,
+                ), // v: signed overflow occured
             );
         }
 
@@ -871,21 +884,25 @@ pub mod instructions {
         // The overflow flag is only relevant when dealing with signed numbers. ALU of course
         // doesn't care but Rust's unsigned `overflowing_sub` does not always return the overflow
         // flag when you would expect it to be set.
-        let (value, overflow) = (operand_register_value as i32).overflowing_sub(shifter_operand_value as i32);
+        let (value, overflow) =
+            (operand_register_value as i32).overflowing_sub(shifter_operand_value as i32);
 
-        emulator.cpu.set_register_value(destination_register, value as u32);
+        emulator
+            .cpu
+            .set_register_value(destination_register, value as u32);
 
         if should_update_flags && destination_register == RegisterNames::r15 {
             if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(RegisterNames::cpsr, emulator.cpu.get_register_value(RegisterNames::spsr));
-            }
-            else {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
                 // Supposedly unpredictable behaviour but the CPU might be able to deal with it, in
                 // a perfectly predictable way... Worry about it later, if it actually ever happens.
                 panic!("SUB: unpredictable");
             }
-        }
-        else if should_update_flags {
+        } else if should_update_flags {
             emulator.cpu.set_nzcv(
                 value >> 31 & 1 > 0,
                 value == 0,
