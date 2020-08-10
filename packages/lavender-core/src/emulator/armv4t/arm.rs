@@ -291,6 +291,12 @@ pub mod instructions {
             .get_register_value(operand_register)
             .overflowing_add(shifter_operand + carry_amount);
 
+        let result = emulator
+            .cpu
+            .get_register_value(operand_register)
+            .wrapping_add(shifter_operand)
+            .wrapping_add(carry_amount);
+
         // Update flags if necessary
         if should_update_flags {
             emulator.cpu.set_nzcv(
@@ -299,7 +305,7 @@ pub mod instructions {
                 // xxx: one of these two is incorrect
                 (emulator.cpu.get_register_value(operand_register) as u64)
                     .wrapping_add(shifter_operand as u64 + carry_amount as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
-                overflow, // v: a signed overflow occured
+                addition_overflow(emulator.cpu.get_register_value(operand_register), shifter_operand, result), // v: a signed overflow occured
             );
         }
 

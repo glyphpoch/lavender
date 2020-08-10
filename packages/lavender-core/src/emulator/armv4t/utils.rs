@@ -256,11 +256,11 @@ pub fn process_addressing_mode(emulator: &mut Emulator, instruction: u32) -> (u3
             (1, 0) => 0,
             (1, _) => register_value >> shift_imm,
             (2, 0) => {
-                (if register_value & 0x8000_0000 == 0x8000_0000 {
+                if register_value & 0x8000_0000 == 0x8000_0000 {
                     0xFFFF_FFFF
                 } else {
                     0x0
-                })
+                }
             }
             // Shift operations on signed integers always perform an arithmetic shift in Rust
             (2, _) => ((register_value as i32) >> shift_imm) as u32,
@@ -342,6 +342,60 @@ pub fn process_misc_addressing_mode(
 
         (address, addressing_type)
     }
+}
+
+#[inline]
+pub fn addition_overflow(first: u32, second: u32, result: u32) -> bool {
+    // 1. If two numbers with the sign bit OFF produce a result with the signed bit ON then overflow
+    //  flag is set:
+    // 0b0111_1111 + 0b0000_0001 = 0b1000_0000
+    //
+    //
+    // 2. If two numbers with the sign bit ON produce a result with the signed bit OFF then
+    //  overflow flag is set:
+    // 0b1000_0000 + 0b1000_0000 = 0b0000_0000
+    //
+    // Truth table (32-bit):
+    // | first[31] | second[31] | result[31] | overflow |
+    // |-----------|------------|------------|----------|
+    // | false     | false      | false      | false    |
+    // | false     | false      | true       | true     |
+    // | false     | true       | false      | false    |
+    // | false     | true       | true       | false    |
+    // | true      | false      | false      | false    |
+    // | true      | false      | true       | false    |
+    // | true      | true       | false      | true     |
+    // | true      | true       | true       | false    |
+    //
+    // The first condition can be checked by XOR-ing the operands of the addition - since XOR will
+    // yield false when the sign bits of the operands are the same. The second condition can also
+    // be checked by XOR-ing the result with either of the operands, all we're checking is that the
+    // sign bit of the result does not match the sign bits of the addition operands. If both
+    // conditions are true, then the addition ended up overflowing.
+    //
+    // Addition with carry (e.g. why do we not need to do anything special for ADC):
+    //  0b0111_1111 + 0b0 + c_flag(0b1) = 0b1000_0000
+    //
+    // We're only considering the first operand, the second operand and the result. If they match
+    // the overflow conditions then the overflow flag is set. The carry flag does not matter at all
+    // for this check.
+    //
+    // Let's look at some of the extremes of 8-bit addition:
+    // 0b0111_1111 + 0b0111_1111 + c_flag(0b1) = 0b1111_1111
+    // 0b0111_1111 + 0b0111_1111 + c_flag(0b0) = 0b1111_1110
+    //
+    // This tells us that when adding two positive numbers together, we'll never end up rolling
+    // over into zero, no matter what the carry flag is set to.
+    //
+    // Similar conditions apply to negative numbers as well:
+    // 0b1000_0000 + 0b1000_0000 + c_flag(0b1) = 0b1
+    // 0b1000_0000 + 0b1000_0000 + c_flag(0b0) = 0b0
+    //
+    // These could also roll over into a negative number again due to the carry flag, but this
+    // would then not result in an overflow:
+    // 0b1111_1111 + 0b1000_0000 + c_flag(0b1) = 0b1000_0000
+    //
+    (!(first ^ second) & (second ^ result)).is_bit_set(31)
 }
 
 pub fn get_data_processing_operands(
