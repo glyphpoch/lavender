@@ -297,12 +297,19 @@ pub mod instructions {
             .wrapping_add(shifter_operand)
             .wrapping_add(carry_amount);
 
-        // Update flags if necessary
-        if should_update_flags {
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(RegisterNames::cpsr, emulator.cpu.get_register_value(RegisterNames::spsr));
+            }
+            else {
+                panic!("ADC: unpredictable");
+            }
+        }
+        else if should_update_flags {
+            // Update flags if necessary
             emulator.cpu.set_nzcv(
                 result >> 31 & 1 > 0,
-                if result == 0 { true } else { false },
-                // xxx: one of these two is incorrect
+                result == 0,
                 (emulator.cpu.get_register_value(operand_register) as u64)
                     .wrapping_add(shifter_operand as u64 + carry_amount as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
                 addition_overflow(emulator.cpu.get_register_value(operand_register), shifter_operand, result), // v: a signed overflow occured
@@ -691,6 +698,19 @@ pub mod instructions {
         1
     }
     pub fn sbc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = Rn - shifter_operand - NOT(C Flag)
+            if S == 1 and Rd == R15 then
+                if CurrentModeHasSPSR() then
+                    CPSR = SPSR
+                else UNPREDICTABLE
+            else if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = NOT BorrowFrom(Rn - shifter_operand - NOT(C Flag))
+                V Flag = OverflowFrom(Rn - shifter_operand - NOT(C Flag))
+        */
         1
     }
     pub fn smlal(_emulator: &mut Emulator, _instruction: u32) -> u32 {
