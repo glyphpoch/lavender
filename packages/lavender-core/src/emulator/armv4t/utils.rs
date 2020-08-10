@@ -426,17 +426,19 @@ pub fn substraction_overflow(first: u32, second: u32, result: u32) -> bool {
 pub fn get_data_processing_operands(
     emulator: &mut Emulator,
     instruction: u32,
-) -> (RegisterNames, u32, u32) {
+) -> (RegisterNames, u32, u32, bool) {
     let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
     let operand_register_value = emulator
         .cpu
         .get_register_value(RegisterNames::try_from(instruction >> 16 & 0xf).unwrap());
-    let shifter_operand_value = process_shifter_operand(emulator, instruction);
+    let (shifter_operand_value, shifter_carry_out) =
+        process_shifter_operand_tmp(emulator, instruction);
 
     (
         destination_register,
         operand_register_value,
         shifter_operand_value,
+        shifter_carry_out,
     )
 }
 
