@@ -2591,7 +2591,7 @@ fn behavior_tst() {
         assert_eq!(emulator.cpu.get_register_value(r0), 0x7FFF_FFFF);
         assert_eq!(emulator.cpu.get_register_value(r1), 0x8000_0000);
         assert_eq!(emulator.cpu.get_n(), false);
-        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
         assert_eq!(emulator.cpu.get_c(), false);
         assert_eq!(emulator.cpu.get_v(), false);
     }

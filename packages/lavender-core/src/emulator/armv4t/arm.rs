@@ -264,6 +264,13 @@ mod internal {
         operation(emulator, source_or_destination_register, address);
     }
 
+    /// Indicates whether the result of the operation should be stored back in the destination
+    /// register or not.
+    pub enum DataProcessingResult {
+        Store,
+        TestOnly,
+    }
+
     /// Common functionality of data processing instructions
     pub fn data_processing_instruction_wrapper<T, U>(
         instruction_name: &'static str,
@@ -272,7 +279,7 @@ mod internal {
         operation: T,
         flag_operation: U,
     ) where
-        T: FnOnce(u32, u32, u32) -> u32,
+        T: FnOnce(u32, u32, u32) -> (u32, DataProcessingResult), // TODO: ugh
         U: FnOnce(&mut Emulator, u32, u32, u32, bool, u32),
     {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
@@ -282,11 +289,14 @@ mod internal {
         let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
             get_data_processing_operands(emulator, instruction);
 
-        let result = operation(operand_register_value, shifter_operand, carry_amount);
+        let (result, result_mode) =
+            operation(operand_register_value, shifter_operand, carry_amount);
 
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+        if let DataProcessingResult::Store = result_mode {
+            emulator
+                .cpu
+                .set_register_value(destination_register, result);
+        }
 
         if should_update_flags && destination_register == RegisterNames::r15 {
             if emulator.cpu.current_mode_has_spsr() {
@@ -327,10 +337,16 @@ pub mod instructions {
             "ADC",
             emulator,
             instruction,
-            |operand_register_value, shifter_operand, carry_amount| -> u32 {
-                operand_register_value
-                    .wrapping_add(shifter_operand)
-                    .wrapping_add(carry_amount)
+            |operand_register_value,
+             shifter_operand,
+             carry_amount|
+             -> (u32, DataProcessingResult) {
+                (
+                    operand_register_value
+                        .wrapping_add(shifter_operand)
+                        .wrapping_add(carry_amount),
+                    DataProcessingResult::Store,
+                )
             },
             |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
                 emulator.cpu.set_nzcv(
@@ -1314,8 +1330,11 @@ pub mod instructions {
             "TST",
             emulator,
             instruction,
-            |operand_register_value, shifter_operand, _| -> u32 {
-                operand_register_value & shifter_operand
+            |operand_register_value, shifter_operand, _| -> (u32, DataProcessingResult) {
+                (
+                    operand_register_value & shifter_operand,
+                    DataProcessingResult::TestOnly,
+                )
             },
             |emulator, _, _, _, shifter_carry_out, result| {
                 emulator.cpu.set_nzcv(
