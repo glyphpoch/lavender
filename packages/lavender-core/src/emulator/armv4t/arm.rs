@@ -309,15 +309,13 @@ mod internal {
     }
 
     /// Common functionality of data processing instructions used for comparing two values
-    pub fn data_processing_compare_instruction_wrapper<T, U>(
+    pub fn data_processing_compare_instruction_wrapper<T>(
         instruction_name: &'static str,
         emulator: &mut Emulator,
         instruction: u32,
         operation: T,
-        flag_operation: U,
     ) where
         T: FnOnce(u32, u32) -> u32,
-        U: FnOnce(&mut Emulator, bool, u32),
     {
         // Get the instruction operands
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
@@ -327,7 +325,12 @@ mod internal {
 
         let result = operation(operand_register_value, shifter_operand);
 
-        flag_operation(emulator, shifter_carry_out, result);
+        emulator.cpu.set_nzcv(
+            result.is_bit_set(31),
+            result == 0,
+            shifter_carry_out,    // c
+            emulator.cpu.get_v(), // v: unaffected
+        );
     }
 }
 
@@ -1318,7 +1321,7 @@ pub mod instructions {
     }
 
     /// Test equivalence
-    pub fn teq(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn teq(emulator: &mut Emulator, instruction: u32) -> u32 {
         /*
         if ConditionPassed(cond) then
             alu_out = Rn EOR shifter_operand
@@ -1327,6 +1330,15 @@ pub mod instructions {
             C Flag = shifter_carry_out
             V Flag = unaffected
         */
+
+        data_processing_compare_instruction_wrapper(
+            "TEQ",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand| -> u32 {
+                operand_register_value ^ shifter_operand
+            },
+        );
 
         1
     }
@@ -1348,14 +1360,6 @@ pub mod instructions {
             instruction,
             |operand_register_value, shifter_operand| -> u32 {
                 operand_register_value & shifter_operand
-            },
-            |emulator, shifter_carry_out, result| {
-                emulator.cpu.set_nzcv(
-                    result.is_bit_set(31),
-                    result == 0,
-                    shifter_carry_out,    // c
-                    emulator.cpu.get_v(), // v: unaffected
-                );
             },
         );
 
