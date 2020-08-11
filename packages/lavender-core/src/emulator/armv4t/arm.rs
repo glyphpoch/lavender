@@ -328,7 +328,7 @@ pub mod instructions {
             "ADC",
             emulator,
             instruction,
-            |operand_register_value: u32, shifter_operand: u32, carry_amount: u32| -> u32 {
+            |operand_register_value, shifter_operand, carry_amount| -> u32 {
                 operand_register_value
                     .wrapping_add(shifter_operand)
                     .wrapping_add(carry_amount)
