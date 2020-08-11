@@ -891,9 +891,58 @@ pub mod instructions {
     }
 
     /// Logical OR (also referred to as the orr instruction)
-    pub fn or(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn or(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = Rn OR shifter_operand
+            if S == 1 and Rd == R15 then
+                if CurrentModeHasSPSR() then
+                    CPSR = SPSR
+                else UNPREDICTABLE
+            else if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = shifter_carry_out
+                V Flag = unaffected
+        */
+
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_value = emulator.cpu.get_register_value(operand_register);
+
+        let (shifter_operand, shifter_carry_out) =
+            process_shifter_operand_tmp(emulator, instruction);
+
+        let result = operand_value | shifter_operand;
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
+                panic!("ORR: unpredictable");
+            }
+        } else if should_update_flags {
+            emulator.cpu.set_nzcv(
+                // TODO: should get values from Rd here
+                result.is_bit_set(31),
+                result == 0,
+                shifter_carry_out,    // c: carry out
+                emulator.cpu.get_v(), // v: unaffected
+            );
+        }
+
         1
     }
+
     pub fn rsb(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
