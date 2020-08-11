@@ -265,13 +265,16 @@ mod internal {
     }
 
     /// Common functionality of data processing instructions
-    pub fn data_processing_instruction_wrapper(
+    pub fn data_processing_instruction_wrapper<T, U>(
         instruction_name: &'static str,
         emulator: &mut Emulator,
         instruction: u32,
-        operation: &dyn Fn(u32, u32, u32) -> u32,
-        flag_operation: fn(&mut Emulator, u32, u32, u32, u32), // TODO: make these params harder to mess up
-    ) {
+        operation: T,
+        flag_operation: U,
+    ) where
+        T: FnOnce(u32, u32, u32) -> u32,
+        U: FnOnce(&mut Emulator, u32, u32, u32, u32),
+    {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
         let should_update_flags = instruction >> 20 & 1 > 0;
 
@@ -321,48 +324,27 @@ pub mod instructions {
 
     /// Addition that includes carry from the carry bit in the CPSR register.
     pub fn adc(emulator: &mut Emulator, instruction: u32) -> u32 {
-        let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
-
-        let result = emulator
-            .cpu
-            .get_register_value(operand_register)
-            .wrapping_add(shifter_operand)
-            .wrapping_add(carry_amount);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "ADC",
+            emulator,
+            instruction,
+            |operand_register_value: u32, shifter_operand: u32, carry_amount: u32| -> u32 {
+                operand_register_value
+                    .wrapping_add(shifter_operand)
+                    .wrapping_add(carry_amount)
+            },
+            |emulator, operand_register_value, shifter_operand, carry_amount, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    (operand_register_value as u64)
+                        .wrapping_add(shifter_operand as u64)
+                        .wrapping_add(carry_amount as u64)
+                        > 0xFFFF_FFFF, // c: an unsigned overflow occured
+                    addition_overflow(operand_register_value, shifter_operand, result), // v: a signed overflow occured
                 );
-            } else {
-                panic!("ADC: unpredictable");
-            }
-        } else if should_update_flags {
-            // Update flags if necessary
-            emulator.cpu.set_nzcv(
-                result >> 31 & 1 > 0,
-                result == 0,
-                (emulator.cpu.get_register_value(operand_register) as u64)
-                    .wrapping_add(shifter_operand as u64 + carry_amount as u64)
-                    > 0xFFFF_FFFF, // c: an unsigned overflow occured
-                addition_overflow(
-                    emulator.cpu.get_register_value(operand_register),
-                    shifter_operand,
-                    result,
-                ), // v: a signed overflow occured
-            );
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         // xxx: Return the actual number of cycles that the instruction should take
         5
