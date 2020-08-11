@@ -740,7 +740,52 @@ pub mod instructions {
     pub fn mla(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn mov(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Move
+    pub fn mov(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = shifter_operand
+            if S == 1 and Rd == R15 then
+                if CurrentModeHasSPSR() then
+                    CPSR = SPSR
+                else UNPREDICTABLE
+            else if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = shifter_carry_out
+                V Flag = unaffected
+        */
+
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let (shifter_operand, shifter_carry_out) =
+            process_shifter_operand_tmp(emulator, instruction);
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, shifter_operand);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
+                panic!("MOV: unpredictable");
+            }
+        } else if should_update_flags {
+            emulator.cpu.set_nzcv(
+                // TODO: should get values from Rd here
+                shifter_operand.is_bit_set(31),
+                shifter_operand == 0,
+                shifter_carry_out,    // c: carry out
+                emulator.cpu.get_v(), // v: unaffected
+            );
+        }
+
         1
     }
     pub fn mrc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
