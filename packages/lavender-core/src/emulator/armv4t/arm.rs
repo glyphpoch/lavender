@@ -943,7 +943,55 @@ pub mod instructions {
         1
     }
 
-    pub fn rsb(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    /// Reverse substract
+    pub fn rsb(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = shifter_operand - Rn
+            if S == 1 and Rd == R15 then
+                if CurrentModeHasSPSR() then
+                    CPSR = SPSR
+                else UNPREDICTABLE
+            else if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = NOT BorrowFrom(shifter_operand - Rn)
+                V Flag = OverflowFrom(shifter_operand - Rn)
+        */
+
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        // Get the instruction operands
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_register_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let result = shifter_operand.wrapping_sub(operand_register_value);
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
+                panic!("RSB: unpredictable");
+            }
+        } else if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result.is_bit_set(31),
+                result == 0,
+                // TODO: is this correct? in some places this is implemented incorrectly
+                shifter_operand >= operand_register_value, // c: NOT BorrowFrom
+                substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
+            );
+        }
+
         1
     }
     pub fn rsc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
