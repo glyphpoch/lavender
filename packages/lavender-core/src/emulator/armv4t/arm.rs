@@ -264,13 +264,6 @@ mod internal {
         operation(emulator, source_or_destination_register, address);
     }
 
-    /// Indicates whether the result of the operation should be stored back in the destination
-    /// register or not.
-    pub enum DataProcessingResult {
-        Store,
-        TestOnly,
-    }
-
     /// Common functionality of data processing instructions
     pub fn data_processing_instruction_wrapper<T, U>(
         instruction_name: &'static str,
@@ -279,24 +272,21 @@ mod internal {
         operation: T,
         flag_operation: U,
     ) where
-        T: FnOnce(u32, u32, u32) -> (u32, DataProcessingResult), // TODO: ugh
-        U: FnOnce(&mut Emulator, u32, u32, u32, bool, u32),
+        T: FnOnce(u32, u32, u32) -> u32,
+        U: FnOnce(&mut Emulator, u32, u32, u32, u32),
     {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
         let should_update_flags = instruction.is_bit_set(20);
 
         // Get the instruction operands
-        let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
+        let (destination_register, operand_register_value, shifter_operand, _) =
             get_data_processing_operands(emulator, instruction);
 
-        let (result, result_mode) =
-            operation(operand_register_value, shifter_operand, carry_amount);
+        let result = operation(operand_register_value, shifter_operand, carry_amount);
 
-        if let DataProcessingResult::Store = result_mode {
-            emulator
-                .cpu
-                .set_register_value(destination_register, result);
-        }
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
 
         if should_update_flags && destination_register == RegisterNames::r15 {
             if emulator.cpu.current_mode_has_spsr() {
@@ -313,10 +303,31 @@ mod internal {
                 operand_register_value,
                 shifter_operand,
                 carry_amount,
-                shifter_carry_out,
                 result,
             );
         }
+    }
+
+    /// Common functionality of data processing instructions used for comparing two values
+    pub fn data_processing_compare_instruction_wrapper<T, U>(
+        instruction_name: &'static str,
+        emulator: &mut Emulator,
+        instruction: u32,
+        operation: T,
+        flag_operation: U,
+    ) where
+        T: FnOnce(u32, u32) -> u32,
+        U: FnOnce(&mut Emulator, bool, u32),
+    {
+        // Get the instruction operands
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_register_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, shifter_carry_out) =
+            process_shifter_operand_tmp(emulator, instruction);
+
+        let result = operation(operand_register_value, shifter_operand);
+
+        flag_operation(emulator, shifter_carry_out, result);
     }
 }
 
@@ -337,18 +348,12 @@ pub mod instructions {
             "ADC",
             emulator,
             instruction,
-            |operand_register_value,
-             shifter_operand,
-             carry_amount|
-             -> (u32, DataProcessingResult) {
-                (
-                    operand_register_value
-                        .wrapping_add(shifter_operand)
-                        .wrapping_add(carry_amount),
-                    DataProcessingResult::Store,
-                )
+            |operand_register_value, shifter_operand, carry_amount| -> u32 {
+                operand_register_value
+                    .wrapping_add(shifter_operand)
+                    .wrapping_add(carry_amount)
             },
-            |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
+            |emulator, operand_register_value, shifter_operand, carry_amount, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
@@ -1311,7 +1316,18 @@ pub mod instructions {
     pub fn swpb(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
+
+    /// Test equivalence
     pub fn teq(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            alu_out = Rn EOR shifter_operand
+            N Flag = alu_out[31]
+            Z Flag = if alu_out == 0 then 1 else 0
+            C Flag = shifter_carry_out
+            V Flag = unaffected
+        */
+
         1
     }
 
@@ -1326,17 +1342,14 @@ pub mod instructions {
             V Flag = unaffected
         */
 
-        data_processing_instruction_wrapper(
+        data_processing_compare_instruction_wrapper(
             "TST",
             emulator,
             instruction,
-            |operand_register_value, shifter_operand, _| -> (u32, DataProcessingResult) {
-                (
-                    operand_register_value & shifter_operand,
-                    DataProcessingResult::TestOnly,
-                )
+            |operand_register_value, shifter_operand| -> u32 {
+                operand_register_value & shifter_operand
             },
-            |emulator, _, _, _, shifter_carry_out, result| {
+            |emulator, shifter_carry_out, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
