@@ -276,7 +276,7 @@ mod internal {
         U: FnOnce(&mut Emulator, u32, u32, u32, u32),
     {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
-        let should_update_flags = instruction >> 20 & 1 > 0;
+        let should_update_flags = instruction.is_bit_set(20);
 
         // Get the instruction operands
         let (destination_register, operand_register_value, shifter_operand, _) =
