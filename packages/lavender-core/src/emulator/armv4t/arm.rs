@@ -273,13 +273,13 @@ mod internal {
         flag_operation: U,
     ) where
         T: FnOnce(u32, u32, u32) -> u32,
-        U: FnOnce(&mut Emulator, u32, u32, u32, u32),
+        U: FnOnce(&mut Emulator, u32, u32, u32, bool, u32),
     {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
         let should_update_flags = instruction.is_bit_set(20);
 
         // Get the instruction operands
-        let (destination_register, operand_register_value, shifter_operand, _) =
+        let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
             get_data_processing_operands(emulator, instruction);
 
         let result = operation(operand_register_value, shifter_operand, carry_amount);
@@ -303,6 +303,7 @@ mod internal {
                 operand_register_value,
                 shifter_operand,
                 carry_amount,
+                shifter_carry_out,
                 result,
             );
         }
@@ -331,7 +332,7 @@ pub mod instructions {
                     .wrapping_add(shifter_operand)
                     .wrapping_add(carry_amount)
             },
-            |emulator, operand_register_value, shifter_operand, carry_amount, result| {
+            |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
@@ -1297,9 +1298,38 @@ pub mod instructions {
     pub fn teq(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn tst(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Test
+    pub fn tst(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            alu_out = Rn AND shifter_operand
+            N Flag = alu_out[31]
+            Z Flag = if alu_out == 0 then 1 else 0
+            C Flag = shifter_carry_out
+            V Flag = unaffected
+        */
+
+        data_processing_instruction_wrapper(
+            "TST",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value & shifter_operand
+            },
+            |emulator, _, _, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    shifter_carry_out,    // c
+                    emulator.cpu.get_v(), // v: unaffected
+                );
+            },
+        );
+
         1
     }
+
     pub fn umlal(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
