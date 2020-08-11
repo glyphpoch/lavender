@@ -279,10 +279,8 @@ mod internal {
         let should_update_flags = instruction >> 20 & 1 > 0;
 
         // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_register_value = emulator.cpu.get_register_value(operand_register);
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+        let (destination_register, operand_register_value, shifter_operand, _) =
+            get_data_processing_operands(emulator, instruction);
 
         let result = operation(operand_register_value, shifter_operand, carry_amount);
 
