@@ -994,9 +994,62 @@ pub mod instructions {
 
         1
     }
-    pub fn rsc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Reverse Substract with Carry
+    pub fn rsc(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = shifter_operand - Rn - NOT(C Flag)
+            if S == 1 and Rd == R15 then
+                if CurrentModeHasSPSR() then
+                    CPSR = SPSR
+                else UNPREDICTABLE
+            else if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = NOT BorrowFrom(shifter_operand - Rn - NOT(C Flag))
+                V Flag = OverflowFrom(shifter_operand - Rn - NOT(C Flag))
+        */
+
+        let carry_amount = if !emulator.cpu.get_c() { 1 } else { 0 };
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        // Get the instruction operands
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_register_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let result = shifter_operand
+            .wrapping_sub(operand_register_value)
+            .wrapping_sub(carry_amount);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
+                panic!("RSC: unpredictable");
+            }
+        } else if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result.is_bit_set(31),
+                result == 0,
+                // TODO: verify that this is ok
+                (shifter_operand as u64) >= (operand_register_value as u64 + carry_amount as u64), // c: NOT BorrowFrom
+                substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
+            );
+        }
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
         1
     }
+
     pub fn sbc(emulator: &mut Emulator, instruction: u32) -> u32 {
         /*
         if ConditionPassed(cond) then
