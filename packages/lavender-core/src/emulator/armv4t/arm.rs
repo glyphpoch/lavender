@@ -797,9 +797,49 @@ pub mod instructions {
     pub fn msr(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn mul(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Multiply
+    pub fn mul(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = unaffected in v5 and above, UNPREDICTABLE in v4 and earlier
+                V Flag = unaffected
+        */
+
+        let carry_amount = if !emulator.cpu.get_c() { 1 } else { 0 };
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        // Get the instruction operands
+        let destination_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let first_operand_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+        let second_operand_register = RegisterNames::try_from(instruction >> 8 & 0xf).unwrap();
+
+        let first_operand_value = emulator.cpu.get_register_value(first_operand_register);
+        let second_operand_value = emulator.cpu.get_register_value(second_operand_register);
+
+        let result = first_operand_value.wrapping_mul(second_operand_value);
+
+        // TODO: if Rd, Rm or Rs == r15 -> UNPREDICTABLE
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
+        if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result.is_bit_set(31),
+                result == 0,
+                emulator.cpu.get_c(), // c: UNPREDICTABLE
+                emulator.cpu.get_v(), // v: unaffected
+            );
+        }
+
         1
     }
+
     pub fn mvn(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
