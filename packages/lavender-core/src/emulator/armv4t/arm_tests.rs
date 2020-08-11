@@ -2498,6 +2498,99 @@ fn decode_teq() {
 }
 
 #[test]
+fn behavior_teq() {
+    //   cond   I_opc_S Rn   SBZ  shift_op
+    // 0x1110_0001_0011_0000_0000_0000_0000_0001 - teq r0,r1
+    let instruction = 0xE130_0001;
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x0 ^ 0x0
+        emulator.cpu.set_register_value(r0, 0x0);
+        emulator.cpu.set_register_value(r1, 0x0);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x0 ^ 0x0 (carry_flag and overflow_flag set)
+        emulator.cpu.set_register_value(r0, 0x0);
+        emulator.cpu.set_register_value(r1, 0x0);
+        emulator.cpu.set_nzcv(false, false, true, true);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), true);
+        assert_eq!(emulator.cpu.get_v(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x1 ^ 0x0
+        emulator.cpu.set_register_value(r0, 0x1);
+        emulator.cpu.set_register_value(r1, 0x0);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xFFFF_FFFF ^ 0x7FFF_FFFF
+        emulator.cpu.set_register_value(r0, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r1, 0x7FFF_FFFF);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_n(), true);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x8000_0000 ^ 0x8000_0000
+        emulator.cpu.set_register_value(r0, 0x8000_0000);
+        emulator.cpu.set_register_value(r1, 0x8000_0000);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x8000_0000);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x8000_0000);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+}
+
+#[test]
 fn decode_tst() {
     assert_eq!(decode_instruction(0x0_11_000_0_0) as usize, tst as usize);
 }
