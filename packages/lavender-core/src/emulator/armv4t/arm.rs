@@ -263,6 +263,49 @@ mod internal {
 
         operation(emulator, source_or_destination_register, address);
     }
+
+    /// Common functionality of data processing instructions
+    pub fn data_processing_instruction_wrapper(
+        instruction_name: &'static str,
+        emulator: &mut Emulator,
+        instruction: u32,
+        operation: &dyn Fn(u32, u32, u32) -> u32,
+        flag_operation: fn(&mut Emulator, u32, u32, u32, u32), // TODO: make these params harder to mess up
+    ) {
+        let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
+        let should_update_flags = instruction >> 20 & 1 > 0;
+
+        // Get the instruction operands
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let operand_register_value = emulator.cpu.get_register_value(operand_register);
+        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+
+        let result = operation(operand_register_value, shifter_operand, carry_amount);
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
+        if should_update_flags && destination_register == RegisterNames::r15 {
+            if emulator.cpu.current_mode_has_spsr() {
+                emulator.cpu.set_register_value(
+                    RegisterNames::cpsr,
+                    emulator.cpu.get_register_value(RegisterNames::spsr),
+                );
+            } else {
+                panic!(format!("{}: unpredictable", instruction_name));
+            }
+        } else if should_update_flags {
+            flag_operation(
+                emulator,
+                operand_register_value,
+                shifter_operand,
+                carry_amount,
+                result,
+            );
+        }
+    }
 }
 
 /// A module containing functions which implement all of the 32-bit ARM v4T
