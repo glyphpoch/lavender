@@ -2906,6 +2906,44 @@ fn decode_swp() {
 }
 
 #[test]
+fn behavior_swp() {
+    //   cond           Rn   Rd   SBZ       Rm
+    // 0x1110_0001_0000_0010_0000_0000_1001_0001 - swp r0,r1,[r2]
+    let instruction = 0xE102_0091;
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        emulator.memory.write_word(0x0300_0000, 0xaabb_ccdd);
+        emulator.cpu.set_register_value(r1, 0xeeff_0011);
+        emulator.cpu.set_register_value(r2, 0x0300_0000);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0xaabb_ccdd);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xeeff_0011);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x0300_0000);
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0xeeff_0011);
+    }
+
+    // With rotate (24 bits)
+    {
+        let mut emulator = Emulator::dummy();
+
+        emulator.memory.write_word(0x0300_0000, 0xaabb_ccdd);
+        emulator.cpu.set_register_value(r1, 0xeeff_0011);
+        emulator.cpu.set_register_value(r2, 0x0300_0003);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0xbbccddaa);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xeeff_0011);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x0300_0000);
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0xeeff_0011);
+    }
+}
+
+#[test]
 fn decode_swpb() {
     assert_eq!(decode_instruction(0x0_14_000_9_0) as usize, swpb as usize);
 }

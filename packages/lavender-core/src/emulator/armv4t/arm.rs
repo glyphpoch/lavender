@@ -1473,7 +1473,53 @@ pub mod instructions {
     pub fn swi(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn swp(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Swap
+    pub fn swp(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        MemoryAccess(B-bit, E-bit)
+        processor_id = ExecutingProcessor()
+        if ConditionPassed(cond) then
+            if (CP15_reg1_Ubit == 0) then
+                temp = Memory[address,4] Rotate_Right (8 * address[1:0])
+                Memory[address,4] = Rm
+                Rd = temp
+            else /* CP15_reg1_Ubit ==1 */
+                temp = Memory[address,4]
+                Memory[address,4] = Rm
+                Rd = temp
+            if Shared(address) then   /* ARMv6 */
+                physical_address = TLB(address)
+                ClearExclusiveByAddress(physical_address,processor_id,4)
+                /* See Summary of operation on page A2-49 */
+        */
+
+        // CP15_reg1_Ubit is referring to the alignment check bit in the CP15 Control Register. If
+        // the CPU does not have a coprocessor (GBA's CPU does not have it), then the value of the
+        // alignment check bit is fixed to 0, least significant bits do not cause a data abort and
+        // in case of the SWP instruction, are used to rotate the value read from memory at the
+        // specified address.
+
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let load_address_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let value_to_store_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+
+        let value_to_store = emulator.cpu.get_register_value(value_to_store_register);
+        let load_address = emulator.cpu.get_register_value(load_address_register);
+
+        let temp = read_word(emulator, load_address & 0xFFFF_FFFC);
+
+        let rotate = load_address & 0x3;
+        let temp = if rotate > 0 {
+            temp.rotate_right(rotate * 8)
+        } else {
+            temp
+        };
+
+        write_word(emulator, load_address & 0xFFFF_FFFC, value_to_store);
+
+        emulator.cpu.set_register_value(destination_register, temp);
+
         1
     }
     pub fn swpb(_emulator: &mut Emulator, _instruction: u32) -> u32 {
