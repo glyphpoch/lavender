@@ -1519,9 +1519,67 @@ pub mod instructions {
         1
     }
 
-    pub fn umlal(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    /// Unsigned Multiply Accumulate Long
+    pub fn umlal(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            RdLo = (Rm * Rs)[31:0] + RdLo    /* Unsigned multiplication */
+            RdHi = (Rm * Rs)[63:32] + RdHi + CarryFrom((Rm * Rs)[31:0] + RdLo)
+            if S == 1 then
+                N Flag = RdHi[31]
+                Z Flag = if (RdHi == 0) and (RdLo == 0) then 1 else 0
+                C Flag = unaffected    /* See "C and V flags" note */
+                V Flag = unaffected    /* See "C and V flags" note */
+        */
+        let should_update_flags = instruction.is_bit_set(20);
+
+        let destination_register_high = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let destination_register_low = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+
+        let multiplier_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+        let multiplicand_register = RegisterNames::try_from(instruction >> 8 & 0xf).unwrap();
+
+        // TODO: if any of the operands == r15 -> UNPREDICTABLE
+        // TODO: RdHi == RdLo -> UNPREDICTABLE
+
+        let multiplier = emulator.cpu.get_register_value(multiplier_register);
+        let multiplicand = emulator.cpu.get_register_value(multiplicand_register);
+
+        let rd_lo_value = emulator.cpu.get_register_value(destination_register_low);
+        let rd_hi_value = emulator.cpu.get_register_value(destination_register_high);
+
+        // Unsigned multiplication
+        let result = (multiplier as u64).wrapping_mul(multiplicand as u64);
+        let result_low = (result as u32).wrapping_add(rd_lo_value);
+        let carry_amount = if carry_from(result as u32, rd_lo_value) {
+            1
+        } else {
+            0
+        };
+
+        let result_high = ((result >> 32) as u32)
+            .wrapping_add(rd_hi_value)
+            .wrapping_add(carry_amount);
+
+        emulator
+            .cpu
+            .set_register_value(destination_register_low, result_low);
+        emulator
+            .cpu
+            .set_register_value(destination_register_high, result_high);
+
+        if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result_high.is_bit_set(31),
+                result_low == 0 && result_high == 0,
+                emulator.cpu.get_c(), // c: UNPREDICTABLE
+                emulator.cpu.get_v(), // v: unaffected
+            )
+        }
+
         1
     }
+
     pub fn umull(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
