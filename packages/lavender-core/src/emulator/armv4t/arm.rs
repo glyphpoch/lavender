@@ -785,7 +785,48 @@ pub mod instructions {
     pub fn mcr(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
-    pub fn mla(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Multiply Accumulate - multiplies two signed or unisgned 32-bit values and adds a third
+    /// 32-bit value. LSB32 of the result is then are written into the destination register.
+    pub fn mla(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            Rd = (Rm * Rs + Rn)[31:0]
+            if S == 1 then
+                N Flag = Rd[31]
+                Z Flag = if Rd == 0 then 1 else 0
+                C Flag = unaffected in v5 and above, UNPREDICTABLE in v4 and earlier
+                V Flag = unaffected
+        */
+
+        let should_update_flags = instruction.is_bit_set(20);
+
+        let destination_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let multiplier_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+        let multiplicand_register = RegisterNames::try_from(instruction >> 8 & 0xf).unwrap();
+        let summand_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+
+        // TODO: if any of the operands == r15 -> UNPREDICTABLE
+
+        let multiplier = emulator.cpu.get_register_value(multiplier_register);
+        let multiplicand = emulator.cpu.get_register_value(multiplicand_register);
+        let summand = emulator.cpu.get_register_value(summand_register);
+
+        let result = multiplier.wrapping_mul(multiplicand).wrapping_add(summand);
+
+        emulator
+            .cpu
+            .set_register_value(destination_register, result);
+
+        if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result.is_bit_set(31),
+                result == 0,
+                emulator.cpu.get_c(), // c: UNPREDICTABLE
+                emulator.cpu.get_v(), // v: unaffected
+            )
+        }
+
         1
     }
 
