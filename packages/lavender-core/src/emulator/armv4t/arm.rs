@@ -557,7 +557,12 @@ pub mod instructions {
 
     /// Coprocessor data processing
     pub fn cdp(_emulator: &mut Emulator, _instruction: u32) -> u32 {
-        1
+        // Undefined instruction on the GBA
+        // GBATEK: The opcodes are irrelevant for GBA/NDS7 because no coprocessor exists
+        // (except for a dummy CP14 unit). However, NDS9 includes a working CP15 unit.
+        // And, 3DS ARM11 uses CP10/CP11 as VFP floating point unit.
+
+        panic!("CDP: Undefined instruction");
     }
 
     /// Compare negative
@@ -673,7 +678,8 @@ pub mod instructions {
 
     /// Load coprocessor - Loads memory into a coprocessor
     pub fn ldc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
-        1
+        // See CDP impl
+        panic!("LDC: Undefined instruction");
     }
 
     /// Load multiple
@@ -804,8 +810,10 @@ pub mod instructions {
         1
     }
 
+    /// Move to Coprocessor from ARM Register
     pub fn mcr(_emulator: &mut Emulator, _instruction: u32) -> u32 {
-        1
+        // See CDP impl
+        panic!("MCR: Undefined instruction");
     }
 
     /// Multiply Accumulate - multiplies two signed or unisgned 32-bit values and adds a third
@@ -899,12 +907,19 @@ pub mod instructions {
 
         1
     }
+
+    /// Move to ARM Register from Coprocessor
     pub fn mrc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
-        1
+        // See CDP impl
+        panic!("MRC: Undefined instruction");
     }
+
+    /// Move PSR to general-purpose register
     pub fn mrs(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
+
+    /// Move to Status Register From ARM Register
     pub fn msr(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
@@ -1161,6 +1176,7 @@ pub mod instructions {
         1
     }
 
+    /// Substract with Carry
     pub fn sbc(emulator: &mut Emulator, instruction: u32) -> u32 {
         /*
         if ConditionPassed(cond) then
@@ -1341,9 +1357,13 @@ pub mod instructions {
         1
     }
 
+    /// Store Coprocessor
     pub fn stc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
-        1
+        // See CDP impl
+        panic!("STC: Undefined instruction");
     }
+
+    /// Store Multiple
     pub fn stm(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }
