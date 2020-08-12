@@ -537,9 +537,24 @@ pub mod instructions {
 
     /// Branches execution relative to the current program counter by up 32MB in
     /// either direction. Exchanges instruction set to Thumb at the new location.
-    pub fn bx(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn bx(emulator: &mut Emulator, instruction: u32) -> u32 {
+        let target_address_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+
+        let target_address = emulator.cpu.get_register_value(target_address_register);
+
+        // TODO: if Rm[1:0] == 0b10 -> UNPREDICTABLE
+
+        let thumb = target_address.is_bit_set(0);
+
+        emulator.cpu.set_thumb_bit(thumb);
+
+        emulator
+            .cpu
+            .set_register_value(r15, target_address & 0xFFFF_FFFE);
+
         1
     }
+
     /// Coprocessor data processing
     pub fn cdp(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1

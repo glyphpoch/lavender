@@ -306,6 +306,52 @@ fn decode_bx() {
 }
 
 #[test]
+fn behavior_bx() {
+    //   cond           SBO  SBO  SBO       Rm
+    // 0x1110_0001_0010_1111_1111_1111_0001_0000 - bx r0
+    let instruction = 0xE12F_FF10;
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // r0 = 0x0300_0004
+        emulator.cpu.set_register_value(r0, 0x0300_0004);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0004);
+        assert_eq!(emulator.cpu.get_register_value(r15), 0x0300_0004);
+        assert_eq!(emulator.cpu.get_thumb_bit(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // r0 = 0x0300_0005
+        emulator.cpu.set_register_value(r0, 0x0300_0005);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0005);
+        assert_eq!(emulator.cpu.get_register_value(r15), 0x0300_0004);
+        assert_eq!(emulator.cpu.get_thumb_bit(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // r0 = 0x0300_0003 (non-word aligned jump to an address in thumb mode)
+        emulator.cpu.set_register_value(r0, 0x0300_0003);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0003);
+        assert_eq!(emulator.cpu.get_register_value(r15), 0x0300_0002);
+        assert_eq!(emulator.cpu.get_thumb_bit(), true);
+    }
+}
+
+#[test]
 fn decode_cdp() {
     assert_eq!(decode_instruction(0x0_e0_000_0_0) as usize, cdp as usize);
 }
