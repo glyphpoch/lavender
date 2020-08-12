@@ -1522,7 +1522,40 @@ pub mod instructions {
 
         1
     }
-    pub fn swpb(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Swap Byte
+    pub fn swpb(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        MemoryAccess(B-bit, E-bit)
+        processor_id = ExecutingProcessor()
+        if ConditionPassed(cond) then
+            temp = Memory[address,1]
+            Memory[address,1] = Rm[7:0]
+            Rd = temp
+            if Shared(address) then    /* ARMv6 */
+                physical_address = TLB(address)
+                ClearExclusiveByAddress(physical_address,processor_id,1)
+                /* See Summary of operation on page A2-49 */
+        */
+
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let load_address_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let value_to_store_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+
+        // We're only interested in the 8 least significant bits
+        let value_to_store = emulator.cpu.get_register_value(value_to_store_register) as u8;
+        let load_address = emulator.cpu.get_register_value(load_address_register);
+
+        let temp = read_byte(emulator, load_address);
+
+        write_byte(emulator, load_address, value_to_store);
+
+        // Zero extend the value read from memory to an unsigned 32-bit integer and store it in the
+        // destination register.
+        emulator
+            .cpu
+            .set_register_value(destination_register, temp as u32);
+
         1
     }
 
