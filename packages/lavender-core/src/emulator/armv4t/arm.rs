@@ -332,6 +332,13 @@ mod internal {
             emulator.cpu.get_v(), // v: unaffected
         );
     }
+
+    // TODO:
+    // normal multiply wrapper
+    // long multiply wrapper (signed and unsigned)
+    // semaphore ins wrapper (swp, swpb)
+    // exception generating wrapper (swi)
+    // coprocessor ins wrapper
 }
 
 /// A module containing functions which implement all of the 32-bit ARM v4T
