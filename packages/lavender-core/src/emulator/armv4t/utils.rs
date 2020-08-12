@@ -420,6 +420,12 @@ pub fn substraction_overflow(first: u32, second: u32, result: u32) -> bool {
     ((first ^ second) & (first ^ result)).is_bit_set(31)
 }
 
+#[inline]
+pub fn carry_from(first: u32, second: u32) -> bool {
+    // TODO: document, optimise
+    (first as u64).wrapping_add(second as u64) > 0xFFFF_FFFF
+}
+
 pub fn get_data_processing_operands(
     emulator: &mut Emulator,
     instruction: u32,
