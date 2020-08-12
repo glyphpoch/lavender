@@ -1552,7 +1552,9 @@ pub mod instructions {
         let next_instruction_address = emulator.cpu.get_register_value(r15) + 4;
 
         // Store next instruction address and CPSR
-        emulator.cpu.set_register_value(r14, next_instruction_address);
+        emulator
+            .cpu
+            .set_register_value(r14, next_instruction_address);
         emulator.cpu.set_register_value(spsr, old_cpsr);
 
         emulator.cpu.set_fiq_disable(true);

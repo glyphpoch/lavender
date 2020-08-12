@@ -1,6 +1,7 @@
 use crate::emulator::{
     armv4t::arm::{decode_instruction, instructions::*, process_instruction},
-    cpu::RegisterNames::*, cpu::OperationModes,
+    cpu::OperationModes,
+    cpu::RegisterNames::*,
     Emulator,
 };
 
@@ -3001,7 +3002,6 @@ fn behavior_swi() {
         assert_eq!(emulator.cpu.is_irq_disabled(), false);
         assert_eq!(emulator.cpu.get_register_value(r15), 0x0000_0008);
     }
-
 }
 
 #[test]
