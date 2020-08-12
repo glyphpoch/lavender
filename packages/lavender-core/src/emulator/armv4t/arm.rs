@@ -1265,9 +1265,60 @@ pub mod instructions {
 
         1
     }
-    pub fn smull(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+
+    /// Signed Multiply Long
+    pub fn smull(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            RdHi = (Rm * Rs)[63:32] /* Signed multiplication */
+            RdLo = (Rm * Rs)[31:0]
+            if S == 1 then
+                N Flag = RdHi[31]
+                Z Flag = if (RdHi == 0) and (RdLo == 0) then 1 else 0
+                C Flag = unaffected    /* See "C and V flags" note */
+                V Flag = unaffected    /* See "C and V flags" note */
+        */
+
+        let should_update_flags = instruction.is_bit_set(20);
+
+        let destination_register_high = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+        let destination_register_low = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+
+        let multiplier_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+        let multiplicand_register = RegisterNames::try_from(instruction >> 8 & 0xf).unwrap();
+
+        // TODO: if any of the operands == r15 -> UNPREDICTABLE
+        // TODO: RdHi == RdLo -> UNPREDICTABLE
+
+        // Cast the multiplier and multiplicand to signed integers because we need to perform
+        // signed multiplication. This is important in this case because we don't ignore the upper
+        // 32 bits of the 64 bit result.
+        let multiplier = emulator.cpu.get_register_value(multiplier_register) as i32;
+        let multiplicand = emulator.cpu.get_register_value(multiplicand_register) as i32;
+
+        let result = (multiplier as i64).wrapping_mul(multiplicand as i64);
+        let result_low = result as u32;
+        let result_high = (result >> 32) as u32;
+
+        emulator
+            .cpu
+            .set_register_value(destination_register_low, result_low);
+        emulator
+            .cpu
+            .set_register_value(destination_register_high, result_high);
+
+        if should_update_flags {
+            emulator.cpu.set_nzcv(
+                result_high.is_bit_set(31),
+                result_low == 0 && result_high == 0,
+                emulator.cpu.get_c(), // c: UNPREDICTABLE
+                emulator.cpu.get_v(), // v: unaffected
+            )
+        }
+
         1
     }
+
     pub fn stc(_emulator: &mut Emulator, _instruction: u32) -> u32 {
         1
     }

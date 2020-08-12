@@ -2385,6 +2385,108 @@ fn decode_smull() {
 }
 
 #[test]
+fn behavior_smull() {
+    //   cond         S RdHi RdLo Rs        Rm
+    // 0x1110_0000_1101_0001_0000_0011_1001_0010 - smulls r0,r1,r2,r3
+    let instruction = 0xE0D1_0392;
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x0 * 0x0 == 0x0
+        emulator.cpu.set_register_value(r2, 0x0);
+        emulator.cpu.set_register_value(r3, 0x0);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0x0);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x1 * 0x1 == 0x1
+        emulator.cpu.set_register_value(r2, 0x1);
+        emulator.cpu.set_register_value(r3, 0x1);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0x1);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x7FFF_FFFF * 0x7FFF_FFFF == (0x1, 0x3FFF_FFFF)
+        emulator.cpu.set_register_value(r2, 0x7FFF_FFFF);
+        emulator.cpu.set_register_value(r3, 0x7FFF_FFFF);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x3FFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0x8000_0000 * 0x7FFF_FFFF == (0x8000_0000, 0xC000_0000)
+        emulator.cpu.set_register_value(r2, 0x8000_0000);
+        emulator.cpu.set_register_value(r3, 0x7FFF_FFFF);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x8000_0000);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0xC000_0000);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x8000_0000);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0x7FFF_FFFF);
+        assert_eq!(emulator.cpu.get_n(), true);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        // 0xFFFF_FFFF * 0xFFFF_FFFF == (0x1, 0x0)
+        emulator.cpu.set_register_value(r2, 0xFFFF_FFFF);
+        emulator.cpu.set_register_value(r3, 0xFFFF_FFFF);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x1);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0xFFFF_FFFF);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), false);
+        assert_eq!(emulator.cpu.get_c(), false);
+        assert_eq!(emulator.cpu.get_v(), false);
+    }
+}
+
+#[test]
 fn decode_stc() {
     assert_eq!(decode_instruction(0x0_c0_000_0_0) as usize, stc as usize);
 }
