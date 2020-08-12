@@ -2412,6 +2412,26 @@ fn behavior_smull() {
     {
         let mut emulator = Emulator::dummy();
 
+        // 0x0 * 0x0 == 0x0 (carry_flag and overflow_flag set)
+        emulator.cpu.set_register_value(r2, 0x0);
+        emulator.cpu.set_register_value(r3, 0x0);
+        emulator.cpu.set_nzcv(false, false, true, true);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r1), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r2), 0x0);
+        assert_eq!(emulator.cpu.get_register_value(r3), 0x0);
+        assert_eq!(emulator.cpu.get_n(), false);
+        assert_eq!(emulator.cpu.get_z(), true);
+        assert_eq!(emulator.cpu.get_c(), true);
+        assert_eq!(emulator.cpu.get_v(), true);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+
         // 0x1 * 0x1 == 0x1
         emulator.cpu.set_register_value(r2, 0x1);
         emulator.cpu.set_register_value(r3, 0x1);
