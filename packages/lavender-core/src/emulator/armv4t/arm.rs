@@ -915,7 +915,27 @@ pub mod instructions {
     }
 
     /// Move PSR to general-purpose register
-    pub fn mrs(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn mrs(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            if R == 1 then
+                Rd = SPSR
+            else
+                Rd = CPSR
+        */
+
+        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
+        let move_spsr = instruction.is_bit_set(22);
+
+        let value = if move_spsr {
+            // Accessing SPSR in User mode or System mode is UNPREDICTABLE
+            emulator.cpu.get_register_value(spsr)
+        } else {
+            emulator.cpu.get_register_value(cpsr)
+        };
+
+        emulator.cpu.set_register_value(destination_register, value);
+
         1
     }
 
@@ -1505,7 +1525,41 @@ pub mod instructions {
 
     /// Triggers an interupt vector from software. Usually used to make system
     /// calls into the BIOS.
-    pub fn swi(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn swi(emulator: &mut Emulator, _instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            R14_svc   = address of next instruction after the SWI instruction
+            SPSR_svc  = CPSR
+            CPSR[4:0] = 0b10011              /* Enter Supervisor mode */
+            CPSR[5]   = 0                    /* Execute in ARM state */
+            /* CPSR[6] is unchanged */
+            CPSR[7]   = 1                    /* Disable normal interrupts */
+            /* CPSR[8] is unchanged */
+            CPSR[9] = CP15_reg1_EEbit
+            if high vectors configured then
+                PC    = 0xFFFF0008
+            else
+                PC    = 0x00000008
+        */
+
+        // TODO: might not be fully correct
+
+        // TODO: this is not safe
+        let old_cpsr = emulator.cpu.get_register_value(cpsr);
+
+        // Enter supervisor mode
+        emulator.cpu.set_operation_mode(OperationModes::SVC);
+        let next_instruction_address = emulator.cpu.get_register_value(r15) + 4;
+
+        // Store next instruction address and CPSR
+        emulator.cpu.set_register_value(r14, next_instruction_address);
+        emulator.cpu.set_register_value(spsr, old_cpsr);
+
+        emulator.cpu.set_fiq_disable(true);
+        emulator.cpu.set_irq_disable(false);
+
+        emulator.cpu.set_register_value(r15, 0x0000_0008);
+
         1
     }
 
@@ -1529,11 +1583,9 @@ pub mod instructions {
                 /* See Summary of operation on page A2-49 */
         */
 
-        // CP15_reg1_Ubit is referring to the alignment check bit in the CP15 Control Register. If
-        // the CPU does not have a coprocessor (GBA's CPU does not have it), then the value of the
-        // alignment check bit is fixed to 0, least significant bits do not cause a data abort and
-        // in case of the SWP instruction, are used to rotate the value read from memory at the
-        // specified address.
+        // CP15_reg1_Ubit is referring to the bit for enabling unaligned data access operations.
+        // This is set to 0 for legacy code (assuming this is the case on the GBA). Unaligned loads
+        // are treated as rotated aligned data accesses.
 
         let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
         let load_address_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();

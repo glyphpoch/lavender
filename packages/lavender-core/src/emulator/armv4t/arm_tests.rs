@@ -1,6 +1,6 @@
 use crate::emulator::{
     armv4t::arm::{decode_instruction, instructions::*, process_instruction},
-    cpu::RegisterNames::*,
+    cpu::RegisterNames::*, cpu::OperationModes,
     Emulator,
 };
 
@@ -1421,6 +1421,38 @@ fn decode_mrc() {
 #[test]
 fn decode_mrs() {
     assert_eq!(decode_instruction(0x0_10_000_0_0) as usize, mrs as usize);
+}
+
+#[test]
+fn behavior_mrs() {
+    //   cond       R   SBO  Rd   SBZ
+    // 0x1110_0001_0000_1111_0000_0000_0000_0000 - mrs r0,cpsr
+    let instruction = 0xE10F_0000;
+
+    {
+        let mut emulator = Emulator::dummy();
+
+        emulator.cpu.set_register_value(cpsr, 0xaabb_cc10);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0xaabb_cc10);
+    }
+
+    //   cond       R   SBO  Rd   SBZ
+    // 0x1110_0001_0100_1111_0000_0000_0000_0000 - mrs r0,spsr
+    let instruction = 0xE14F_0000;
+
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_operation_mode(OperationModes::SVC);
+
+        emulator.cpu.set_register_value(spsr, 0xaabb_cc12);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0xaabb_cc12);
+    }
 }
 
 #[test]
@@ -2944,6 +2976,32 @@ fn behavior_sub() {
 #[test]
 fn decode_swi() {
     assert_eq!(decode_instruction(0x0_f0_000_0_0) as usize, swi as usize);
+}
+
+#[test]
+fn behavior_swi() {
+    //   cond SBO  immed_24
+    // 0x1110_1111_0000_0000_0000_0000_0000_0000 - swi 0h (soft reset?)
+    let instruction = 0xEF00_0000;
+
+    // TODO: un-verified behavior
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.reset();
+
+        emulator.cpu.set_register_value(r15, 0xaabb_ddcc);
+        emulator.cpu.set_register_value(cpsr, 0xeeff_9910);
+
+        process_instruction(&mut emulator, instruction);
+
+        assert_eq!(emulator.cpu.get_operation_mode(), Some(OperationModes::SVC));
+        assert_eq!(emulator.cpu.registers.r14_svc, 0xaabb_ddd0);
+        assert_eq!(emulator.cpu.registers.spsr_svc, 0xeeff_9910);
+        assert_eq!(emulator.cpu.is_fiq_disabled(), true);
+        assert_eq!(emulator.cpu.is_irq_disabled(), false);
+        assert_eq!(emulator.cpu.get_register_value(r15), 0x0000_0008);
+    }
+
 }
 
 #[test]
