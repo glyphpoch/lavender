@@ -1462,6 +1462,130 @@ fn decode_msr() {
 }
 
 #[test]
+fn behavior_msr() {
+    // TODO: most of these aren't verified..
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_operation_mode(OperationModes::SYS);
+
+        emulator.cpu.set_register_value(cpsr, 0xaabb_cc1f);
+        emulator.cpu.set_register_value(r0, 0xddee_ff10);
+
+        //   cond       R   fm   SBO  SBZ       Rm
+        // 0x1110_0001_0010_0001_1111_0000_0000_0000 - msr cpsr_ctl,r0
+        process_instruction(&mut emulator, 0xE121_F000);
+
+        assert_eq!(emulator.cpu.get_register_value(cpsr), 0xaabb_cc10);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_operation_mode(OperationModes::SYS);
+
+        emulator.cpu.set_register_value(cpsr, 0xaabb_cc1f);
+        emulator.cpu.set_register_value(r0, 0xddee_ff10);
+
+        //   cond       R   fm   SBO  SBZ       Rm
+        // 0x1110_0001_0010_0010_1111_0000_0000_0000 - msr cpsr_x,r0
+        process_instruction(&mut emulator, 0xE122_F000);
+
+        assert_eq!(emulator.cpu.get_register_value(cpsr), 0xaabb_cc1f);
+    }
+
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_operation_mode(OperationModes::SYS);
+
+        emulator.cpu.set_register_value(cpsr, 0xaabb_cc1f);
+        emulator.cpu.set_register_value(r0, 0xddee_ff10);
+
+        //   cond       R   fm   SBO  SBZ       Rm
+        // 0x1110_0001_0010_0011_1111_0000_0000_0000 - msr cpsr_xc,r0
+        process_instruction(&mut emulator, 0xE123_F000);
+
+        assert_eq!(emulator.cpu.get_register_value(cpsr), 0xaabb_cc10);
+    }
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_0100_1111_0000_0000_0000 - msr cpsr_s,r0
+    // 0xE124_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_0101_1111_0000_0000_0000 - msr cpsr_sc,r0
+    // 0xE125_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_0110_1111_0000_0000_0000 - msr cpsr_sx,r0
+    // 0xE126_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_0111_1111_0000_0000_0000 - msr cpsr_sxc,r0
+    // 0xE127_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1000_1111_0000_0000_0000 - msr cpsr_flg,r0
+    // 0xE128_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1001_1111_0000_0000_0000 - msr cpsr_fc,r0
+    // 0xE129_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1010_1111_0000_0000_0000 - msr cpsr_fx,r0
+    // 0xE12A_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1011_1111_0000_0000_0000 - msr cpsr_fxc,r0
+    // 0xE12B_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1100_1111_0000_0000_0000 - msr cpsr_fs,r0
+    // 0xE12C_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1101_1111_0000_0000_0000 - msr cpsr_fsc,r0
+    // 0xE12D_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1110_1111_0000_0000_0000 - msr cpsr_fsx,r0
+    // 0xE12E_F000
+
+    //   cond       R   fm   SBO  SBZ       Rm
+    // 0x1110_0001_0010_1111_1111_0000_0000_0000 - msr cpsr,r0
+    // 0xE12F_F000
+
+    {
+        let mut emulator = Emulator::dummy();
+        // Need to be in one of the modes that has SPSR
+        emulator.cpu.set_operation_mode(OperationModes::SVC);
+
+        emulator.cpu.set_register_value(spsr, 0xaabb_cce9);
+        emulator.cpu.set_register_value(r0, 0xddee_ff13);
+
+        //   cond       R   fm   SBO  SBZ       Rm
+        // 0x1110_0001_0110_1001_1111_0000_0000_0000 - msr spsr_fc,r0
+        process_instruction(&mut emulator, 0xE169_F000);
+
+        // See byte_mask when R == 1 if the result is surprising
+        assert_eq!(emulator.cpu.get_register_value(spsr), 0xdabb_ccc3);
+    }
+
+    // User mode test with immediate value
+    {
+        let mut emulator = Emulator::dummy();
+        emulator.cpu.set_operation_mode(OperationModes::USR);
+
+        emulator.cpu.set_register_value(cpsr, 0xaabb_cc10);
+
+        //   cond       R   fm   SBO  rot  immed_8
+        // 0x1110_0011_0010_1001_1111_0100_1111_1111 - msr spsr_fc,0xff00_0000
+        process_instruction(&mut emulator, 0xE329_F4FF);
+
+        assert_eq!(emulator.cpu.get_register_value(cpsr), 0xfabb_cc10);
+    }
+}
+
+#[test]
 fn decode_mul() {
     assert_eq!(decode_instruction(0x0_00_000_9_0) as usize, mul as usize);
 }

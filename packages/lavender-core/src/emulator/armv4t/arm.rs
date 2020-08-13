@@ -940,7 +940,100 @@ pub mod instructions {
     }
 
     /// Move to Status Register From ARM Register
-    pub fn msr(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn msr(emulator: &mut Emulator, instruction: u32) -> u32 {
+        /*
+        if ConditionPassed(cond) then
+            if opcode[25] == 1 then
+                operand = 8_bit_immediate Rotate_Right (rotate_imm * 2)
+            else
+                operand = Rm
+            if (operand AND UnallocMask) !=0 then
+                UNPREDICTABLE              /* Attempt to set reserved bits */
+            byte_mask = (if field_mask[0] == 1 then 0x000000FF else 0x00000000) OR
+                        (if field_mask[1] == 1 then 0x0000FF00 else 0x00000000) OR
+                        (if field_mask[2] == 1 then 0x00FF0000 else 0x00000000) OR
+                        (if field_mask[3] == 1 then 0xFF000000 else 0x00000000)
+            if R == 0 then
+                if InAPrivilegedMode() then
+                    if (operand AND StateMask) != 0 then
+                        UNPREDICTABLE      /* Attempt to set non-ARM execution state */
+                    else
+                        mask = byte_mask AND (UserMask OR PrivMask)
+                else
+                    mask = byte_mask AND UserMask
+                CPSR = (CPSR AND NOT mask) OR (operand AND mask)
+            else  /* R == 1 */
+                if CurrentModeHasSPSR() then
+                    mask = byte_mask AND (UserMask OR PrivMask OR StateMask)
+                    SPSR = (SPSR AND NOT mask) OR (operand AND mask)
+                else
+                    UNPREDICTABLE
+        */
+
+        let immediate_operand = instruction.is_bit_set(25);
+
+        let operand = if immediate_operand {
+            let immediate_8bit_value = instruction & 0xff;
+            let rotate_imm = instruction >> 8 & 0xf;
+            immediate_8bit_value.rotate_right(rotate_imm << 1)
+        } else {
+            let source_register = RegisterNames::try_from(instruction & 0xf).unwrap();
+            emulator.cpu.get_register_value(source_register)
+        };
+
+        #[repr(u32)]
+        enum BitMaskConstants4T {
+            Unalloc = 0x0FFF_FF00,
+            User = 0xF000_0000,
+            Priv = 0x0000_000F,
+            State = 0x0000_0020,
+        }
+
+        // if operand & BitMaskConstants4T::Unalloc as u32 != 0 {
+        //     // TODO: panic probably not the appropriate thing to do here.. especially since the
+        //     // field_mask bits allow for the reserved bytes to be modified.
+        //     panic!("MSR: Unpredictable (1)");
+        // }
+
+        let field_mask = (instruction >> 16) & 0xf;
+
+        // TODO: must be a simpler way to do this
+        let mut byte_mask: u32 = 0;
+        for pos in 0..4 {
+            if field_mask.is_bit_set(pos) {
+                // pos << 3 to multiply pos by 8
+                byte_mask |= 0xFF << (pos << 3);
+            }
+        }
+
+        let write_spsr = instruction.is_bit_set(22);
+
+        if !write_spsr {
+            // If we're in a privileged operation mode (anything that's not User Mode)
+            let mask = if emulator.cpu.get_operation_mode().expect("TODO") != OperationModes::USR {
+                if operand & BitMaskConstants4T::State as u32 != 0 {
+                    panic!("MSR: Unpredictable (2)");
+                } else {
+                    byte_mask & (BitMaskConstants4T::User as u32 | BitMaskConstants4T::Priv as u32)
+                }
+            } else {
+                byte_mask & BitMaskConstants4T::User as u32
+            };
+            let cpsr_value = emulator.cpu.get_register_value(cpsr);
+            let result = (cpsr_value & (!mask)) | (operand & mask);
+            emulator.cpu.set_register_value(cpsr, result);
+        } else if emulator.cpu.current_mode_has_spsr() {
+                let mask = byte_mask
+                    & (BitMaskConstants4T::User as u32
+                        | BitMaskConstants4T::Priv as u32
+                        | BitMaskConstants4T::State as u32);
+                let spsr_value = emulator.cpu.get_register_value(spsr);
+                let result = (spsr_value & (!mask)) | (operand & mask);
+                emulator.cpu.set_register_value(spsr, result);
+        } else {
+            panic!("MSR: Unpredictable (3)");
+        }
+
         1
     }
 
