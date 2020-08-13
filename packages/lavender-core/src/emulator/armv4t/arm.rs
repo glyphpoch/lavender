@@ -1023,13 +1023,13 @@ pub mod instructions {
             let result = (cpsr_value & (!mask)) | (operand & mask);
             emulator.cpu.set_register_value(cpsr, result);
         } else if emulator.cpu.current_mode_has_spsr() {
-                let mask = byte_mask
-                    & (BitMaskConstants4T::User as u32
-                        | BitMaskConstants4T::Priv as u32
-                        | BitMaskConstants4T::State as u32);
-                let spsr_value = emulator.cpu.get_register_value(spsr);
-                let result = (spsr_value & (!mask)) | (operand & mask);
-                emulator.cpu.set_register_value(spsr, result);
+            let mask = byte_mask
+                & (BitMaskConstants4T::User as u32
+                    | BitMaskConstants4T::Priv as u32
+                    | BitMaskConstants4T::State as u32);
+            let spsr_value = emulator.cpu.get_register_value(spsr);
+            let result = (spsr_value & (!mask)) | (operand & mask);
+            emulator.cpu.set_register_value(spsr, result);
         } else {
             panic!("MSR: Unpredictable (3)");
         }

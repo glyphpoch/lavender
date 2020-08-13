@@ -341,6 +341,90 @@ pub fn process_misc_addressing_mode(
     }
 }
 
+pub fn process_load_store_multiple_addressing_mode(
+    emulator: &mut Emulator,
+    instruction: u32,
+    register_list: u32,
+) -> (u32, u32) {
+    #[derive(TryFromPrimitive)]
+    #[repr(u32)]
+    enum AddressingMode {
+        /// Increment after
+        IA = 0b01,
+        /// Increment before
+        IB = 0b11,
+        /// Decrement after
+        DA = 0b00,
+        /// Decrement before
+        DB = 0b10,
+    }
+
+    let addressing_mode =
+        AddressingMode::try_from(instruction >> 23 & 0x3).expect("All posibilities are covered");
+
+    let base_address_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
+    let base_address = emulator.cpu.get_register_value(base_address_register);
+
+    let mut num_registers = 0;
+    for pos in 0..15 {
+        if register_list.is_bit_set(pos) {
+            num_registers += 1;
+        }
+    }
+
+    let offset_address = match addressing_mode {
+        AddressingMode::IA | AddressingMode::IB => {
+            base_address + (num_registers * 4)
+        },
+        AddressingMode::DA | AddressingMode::DB => {
+            base_address - (num_registers * 4)
+        }
+    };
+
+    if instruction.is_bit_set(21) {
+        emulator.cpu.set_register_value(base_address_register, offset_address);
+    }
+
+    match addressing_mode {
+        AddressingMode::IA => {
+            /*
+            start_address = Rn
+            end_address = Rn + (Number_Of_Set_Bits_In(register_list) * 4) - 4
+            if ConditionPassed(cond) and W == 1 then
+                Rn = Rn + (Number_Of_Set_Bits_In(register_list) * 4)
+            */
+            (base_address, offset_address - 4)
+        },
+        AddressingMode::IB => {
+            /*
+            start_address = Rn + 4
+            end_address = Rn + (Number_Of_Set_Bits_In(register_list) * 4)
+            if ConditionPassed(cond) and W == 1 then
+                Rn = Rn + (Number_Of_Set_Bits_In(register_list) * 4)
+            */
+            (base_address + 4, offset_address)
+        },
+        AddressingMode::DA => {
+            /*
+            start_address = Rn - (Number_Of_Set_Bits_In(register_list) * 4) + 4
+            end_address = Rn
+            if ConditionPassed(cond) and W == 1 then
+                Rn = Rn - (Number_Of_Set_Bits_In(register_list) * 4)
+            */
+            (offset_address + 4, base_address)
+        },
+        AddressingMode::DB => {
+            /*
+            start_address = Rn - (Number_Of_Set_Bits_In(register_list) * 4)
+            end_address = Rn - 4
+            if ConditionPassed(cond) and W == 1 then
+                Rn = Rn - (Number_Of_Set_Bits_In(register_list) * 4)
+            */
+            (offset_address, base_address - 4)
+        }
+    }
+}
+
 #[inline]
 pub fn addition_overflow(first: u32, second: u32, result: u32) -> bool {
     // 1. If two numbers with the sign bit OFF produce a result with the signed bit ON then overflow
