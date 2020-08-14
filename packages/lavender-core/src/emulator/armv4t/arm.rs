@@ -1184,40 +1184,22 @@ pub mod instructions {
                 V Flag = unaffected
         */
 
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_value = emulator.cpu.get_register_value(operand_register);
-
-        let (shifter_operand, shifter_carry_out) =
-            process_shifter_operand_tmp(emulator, instruction);
-
-        let result = operand_value | shifter_operand;
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "ORR",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value | shifter_operand
+            },
+            |emulator, _, _, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    shifter_carry_out,    // c: carry out
+                    emulator.cpu.get_v(), // v: unaffected
                 );
-            } else {
-                panic!("ORR: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                // TODO: should get values from Rd here
-                result.is_bit_set(31),
-                result == 0,
-                shifter_carry_out,    // c: carry out
-                emulator.cpu.get_v(), // v: unaffected
-            );
-        }
-
+            },
+        );
         1
     }
 
