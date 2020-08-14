@@ -539,20 +539,17 @@ pub mod instructions {
 
         // Get the instruction operands
         let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_value = emulator.cpu.get_register_value(operand_register);
+        let operand_register_value = emulator.cpu.get_register_value(operand_register);
         let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
 
-        let (alu_out, overflow) = (operand_value as i32).overflowing_add(shifter_operand as i32);
-        let alu_out = alu_out as u32;
+        let alu_out = operand_register_value.wrapping_add(shifter_operand);
 
-        let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
         // Update flags if necessary
         emulator.cpu.set_nzcv(
             alu_out.is_bit_set(31),
             alu_out == 0,
-            // TODO: simplify/improve
-            (operand_value as u64).wrapping_add(shifter_operand as u64) > 0xFFFF_FFFF, // c: an unsigned overflow occured
-            overflow, // v: signed overflow occured
+            carry_from(operand_register_value, shifter_operand), // c: an unsigned overflow occured
+            addition_overflow(operand_register_value, shifter_operand, alu_out), // v: signed overflow occured
         );
 
         1
@@ -567,22 +564,16 @@ pub mod instructions {
         // V Flag = OverflowFrom(Rn - shifter_operand)
 
         // Get the instruction operands
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_value = emulator.cpu.get_register_value(operand_register);
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
+        let (_, operand_register_value, shifter_operand, _) = get_data_processing_operands(emulator, instruction);
 
-        let (alu_out, overflow) = (operand_value as i32).overflowing_sub(shifter_operand as i32);
-        let alu_out = alu_out as u32;
+        let alu_out = operand_register_value.wrapping_sub(shifter_operand);
 
-        let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
         // Update flags if necessary
         emulator.cpu.set_nzcv(
             alu_out.is_bit_set(31),
             alu_out == 0,
-            // TODO: this was done using a wrapping_add before and it still is in other
-            // instructions, however that implementation might be broken when comparing two zeroes.
-            operand_value >= shifter_operand, // c: NOT BorrowFrom
-            overflow,                         // v: signed overflow occured
+            not_borrow_from(operand_register_value, shifter_operand), // c: NOT BorrowFrom
+            substraction_overflow(operand_register_value, shifter_operand, alu_out),                         // v: signed overflow occured
         );
 
         1

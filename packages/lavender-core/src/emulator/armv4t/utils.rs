@@ -511,6 +511,12 @@ pub fn carry_from(first: u32, second: u32) -> bool {
     (first as u64).wrapping_add(second as u64) > 0xFFFF_FFFF
 }
 
+#[inline]
+pub fn not_borrow_from(first: u32, second: u32) -> bool {
+    // TODO: document, optimise
+    first >= second
+}
+
 pub fn get_data_processing_operands(
     emulator: &mut Emulator,
     instruction: u32,
