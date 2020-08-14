@@ -313,17 +313,22 @@ mod internal {
         instruction_name: &'static str,
         emulator: &mut Emulator,
         instruction: u32,
+        write_result: bool, // TODO: bit hacky..
         operation: T,
     ) where
         T: FnOnce(u32, u32) -> u32,
     {
         // Get the instruction operands
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_register_value = emulator.cpu.get_register_value(operand_register);
-        let (shifter_operand, shifter_carry_out) =
-            process_shifter_operand_tmp(emulator, instruction);
+        let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
+            get_data_processing_operands(emulator, instruction);
 
         let result = operation(operand_register_value, shifter_operand);
+
+        if write_result {
+            emulator
+                .cpu
+                .set_register_value(destination_register, result);
+        }
 
         emulator.cpu.set_nzcv(
             result.is_bit_set(31),
@@ -405,36 +410,15 @@ pub mod instructions {
 
     /// Logical AND
     pub fn and(emulator: &mut Emulator, instruction: u32) -> u32 {
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let (
-            destination_register,
-            operand_register_value,
-            shifter_operand_value,
-            shifter_carry_out,
-        ) = get_data_processing_operands(emulator, instruction);
-
-        let result = operand_register_value & shifter_operand_value;
-
-        if should_update_flags {
-            if destination_register == r15 {
-                emulator
-                    .cpu
-                    .set_register_value(cpsr, emulator.cpu.get_register_value(spsr));
-            } else {
-                emulator.cpu.set_nzcv(
-                    result >> 31 & 1 > 0,
-                    result == 0,
-                    shifter_carry_out,    // xxx: c: shifter_carry_out
-                    emulator.cpu.get_v(), // xxx: this actually shouldn't be mutated at all
-                );
-            }
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+        data_processing_compare_instruction_wrapper(
+            "AND",
+            emulator,
+            instruction,
+            true,
+            |operand_register_value, shifter_operand| -> u32 {
+                operand_register_value & shifter_operand
+            },
+        );
 
         // xxx: Return the actual number of cycles that the instruction should take
         5
@@ -1969,6 +1953,7 @@ pub mod instructions {
             "TEQ",
             emulator,
             instruction,
+            false,
             |operand_register_value, shifter_operand| -> u32 {
                 operand_register_value ^ shifter_operand
             },
@@ -1992,6 +1977,7 @@ pub mod instructions {
             "TST",
             emulator,
             instruction,
+            false,
             |operand_register_value, shifter_operand| -> u32 {
                 operand_register_value & shifter_operand
             },
