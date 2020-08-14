@@ -382,34 +382,22 @@ pub mod instructions {
 
     /// Addition
     pub fn add(emulator: &mut Emulator, instruction: u32) -> u32 {
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let (destination_register, operand_register_value, shifter_operand_value, _) =
-            get_data_processing_operands(emulator, instruction);
-
-        let (result, overflow) = operand_register_value.overflowing_add(shifter_operand_value);
-
-        // Update flags if necessary
-        if should_update_flags {
-            if destination_register == r15 {
-                emulator
-                    .cpu
-                    .set_register_value(cpsr, emulator.cpu.get_register_value(spsr));
-            } else {
+        data_processing_instruction_wrapper(
+            "ADD",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value.wrapping_add(shifter_operand)
+            },
+            |emulator, operand_register_value, shifter_operand, _, result| {
                 emulator.cpu.set_nzcv(
-                    result >> 31 & 1 > 0,
+                    result.is_bit_set(31),
                     result == 0,
-                    // xxx: one of these two is incorrect
-                    overflow, // c: an unsigned overflow occured
-                    overflow, // v: a signed overflow occured
+                    carry_from(operand_register_value, shifter_operand), // c: carry occured
+                    addition_overflow(operand_register_value, shifter_operand, result), // v: a signed overflow occured
                 );
-            }
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         // xxx: Return the actual number of cycles that the instruction should take
         5
