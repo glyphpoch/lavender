@@ -590,40 +590,22 @@ pub mod instructions {
         //     Z Flag = if Rd == 0 then 1 else 0
         //     C Flag = shifter_carry_out
         //     V Flag = unaffected
-
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let (
-            destination_register,
-            operand_register_value,
-            shifter_operand_value,
-            shifter_carry_out,
-        ) = get_data_processing_operands(emulator, instruction);
-
-        let result = operand_register_value ^ shifter_operand_value;
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "EOR",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value ^ shifter_operand
+            },
+            |emulator, _, _, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    shifter_carry_out,    // c: carry occured
+                    emulator.cpu.get_v(), // v: unaffected
                 );
-            } else {
-                panic!("EOR: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                result.is_bit_set(31),
-                result == 0,
-                shifter_carry_out,
-                emulator.cpu.get_v(), // unaffected
-            )
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         5
     }
