@@ -415,7 +415,7 @@ pub mod instructions {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
-                    shifter_carry_out, // c: carry occured
+                    shifter_carry_out,    // c: carry occured
                     emulator.cpu.get_v(), // v: unaffected
                 );
             },
@@ -450,34 +450,22 @@ pub mod instructions {
 
     /// Bit clear - Equivalent to `a AND (NOT b)`
     pub fn bic(emulator: &mut Emulator, instruction: u32) -> u32 {
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let (shifter_operand, shifter_carry_out) =
-            process_shifter_operand_tmp(emulator, instruction);
-
-        let result = emulator.cpu.get_register_value(operand_register) & !shifter_operand;
-
-        if should_update_flags {
-            if destination_register == r15 {
-                emulator
-                    .cpu
-                    .set_register_value(cpsr, emulator.cpu.get_register_value(spsr));
-            } else {
+        data_processing_instruction_wrapper(
+            "BIC",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value & !shifter_operand
+            },
+            |emulator, _, _, _, shifter_carry_out, result| {
                 emulator.cpu.set_nzcv(
-                    result >> 31 & 1 > 0,
+                    result.is_bit_set(31),
                     result == 0,
-                    shifter_carry_out,
-                    emulator.cpu.get_v(),
+                    shifter_carry_out,    // c: carry occured
+                    emulator.cpu.get_v(), // v: unaffected
                 );
-            }
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         // xxx: Return the actual number of cycles that the instruction should take
         5
