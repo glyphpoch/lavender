@@ -273,13 +273,13 @@ mod internal {
         flag_operation: U,
     ) where
         T: FnOnce(u32, u32, u32) -> u32,
-        U: FnOnce(&mut Emulator, u32, u32, u32, u32),
+        U: FnOnce(&mut Emulator, u32, u32, u32, bool, u32),
     {
         let carry_amount = if emulator.cpu.get_c() { 1 } else { 0 };
         let should_update_flags = instruction.is_bit_set(20);
 
         // Get the instruction operands
-        let (destination_register, operand_register_value, shifter_operand, _) =
+        let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
             get_data_processing_operands(emulator, instruction);
 
         let result = operation(operand_register_value, shifter_operand, carry_amount);
@@ -303,6 +303,7 @@ mod internal {
                 operand_register_value,
                 shifter_operand,
                 carry_amount,
+                shifter_carry_out,
                 result,
             );
         }
@@ -313,22 +314,15 @@ mod internal {
         instruction_name: &'static str,
         emulator: &mut Emulator,
         instruction: u32,
-        write_result: bool, // TODO: bit hacky..
         operation: T,
     ) where
         T: FnOnce(u32, u32) -> u32,
     {
         // Get the instruction operands
-        let (destination_register, operand_register_value, shifter_operand, shifter_carry_out) =
+        let (_, operand_register_value, shifter_operand, shifter_carry_out) =
             get_data_processing_operands(emulator, instruction);
 
         let result = operation(operand_register_value, shifter_operand);
-
-        if write_result {
-            emulator
-                .cpu
-                .set_register_value(destination_register, result);
-        }
 
         emulator.cpu.set_nzcv(
             result.is_bit_set(31),
@@ -368,7 +362,7 @@ pub mod instructions {
                     .wrapping_add(shifter_operand)
                     .wrapping_add(carry_amount)
             },
-            |emulator, operand_register_value, shifter_operand, carry_amount, result| {
+            |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
@@ -394,7 +388,7 @@ pub mod instructions {
             |operand_register_value, shifter_operand, _| -> u32 {
                 operand_register_value.wrapping_add(shifter_operand)
             },
-            |emulator, operand_register_value, shifter_operand, _, result| {
+            |emulator, operand_register_value, shifter_operand, _, _, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
@@ -410,13 +404,20 @@ pub mod instructions {
 
     /// Logical AND
     pub fn and(emulator: &mut Emulator, instruction: u32) -> u32 {
-        data_processing_compare_instruction_wrapper(
+        data_processing_instruction_wrapper(
             "AND",
             emulator,
             instruction,
-            true,
-            |operand_register_value, shifter_operand| -> u32 {
+            |operand_register_value, shifter_operand, _| -> u32 {
                 operand_register_value & shifter_operand
+            },
+            |emulator, _, _, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    shifter_carry_out, // c: carry occured
+                    emulator.cpu.get_v(), // v: unaffected
+                );
             },
         );
 
@@ -1953,7 +1954,6 @@ pub mod instructions {
             "TEQ",
             emulator,
             instruction,
-            false,
             |operand_register_value, shifter_operand| -> u32 {
                 operand_register_value ^ shifter_operand
             },
@@ -1977,7 +1977,6 @@ pub mod instructions {
             "TST",
             emulator,
             instruction,
-            false,
             |operand_register_value, shifter_operand| -> u32 {
                 operand_register_value & shifter_operand
             },
