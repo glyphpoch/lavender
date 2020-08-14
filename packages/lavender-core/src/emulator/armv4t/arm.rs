@@ -1150,36 +1150,20 @@ pub mod instructions {
                 V Flag = unaffected
         */
 
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let (shifter_operand, shifter_carry_out) =
-            process_shifter_operand_tmp(emulator, instruction);
-
-        let shifter_operand = !shifter_operand;
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, shifter_operand);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "MVN",
+            emulator,
+            instruction,
+            |_, shifter_operand, _| -> u32 { !shifter_operand },
+            |emulator, _, _, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    shifter_carry_out,    // c: carry out
+                    emulator.cpu.get_v(), // v: unaffected
                 );
-            } else {
-                panic!("MVN: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                // TODO: should get values from Rd here
-                shifter_operand.is_bit_set(31),
-                shifter_operand == 0,
-                shifter_carry_out,    // c: carry out
-                emulator.cpu.get_v(), // v: unaffected
-            );
-        }
+            },
+        );
 
         1
     }
