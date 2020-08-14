@@ -683,7 +683,141 @@ pub mod instructions {
     }
 
     /// Load multiple
-    pub fn ldm(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn ldm(emulator: &mut Emulator, instruction: u32) -> u32 {
+        match (instruction.is_bit_set(22), instruction.is_bit_set(15)) {
+            (false, _) => {
+                // LDM(1)
+                /*
+                MemoryAccess(B-bit, E-bit)
+                if ConditionPassed(cond) then
+                    address = start_address
+
+                    for i = 0 to 14
+                        if register_list[i] == 1 then
+                            Ri = Memory[address,4]
+                            address = address + 4
+
+                    if register_list[15] == 1 then
+                        value = Memory[address,4]
+                        if (architecture version 5 or above) then
+                            pc = value AND 0xFFFFFFFE
+                            T Bit = value[0]
+                        else
+                            pc = value AND 0xFFFFFFFC
+                        address = address + 4
+                    assert end_address == address - 4
+                */
+                let (start_address, end_address) =
+                    process_load_store_multiple_addressing_mode(emulator, instruction);
+
+                let register_list = instruction & 0xffff;
+
+                let mut address = start_address;
+                for pos in 0..15 {
+                    if register_list.is_bit_set(pos) {
+                        let register = RegisterNames::try_from(pos).unwrap();
+                        let value = emulator.memory.read_word(address);
+                        emulator.cpu.set_register_value(register, value);
+                        address += 4;
+                    }
+                }
+
+                if register_list.is_bit_set(15) {
+                    let value = emulator.memory.read_word(address);
+                    emulator.cpu.set_register_value(r15, value & 0xFFFF_FFFC);
+                    address += 4;
+                }
+
+                // TODO: properly implement this
+                assert_eq!(end_address, address - 4);
+            }
+            (true, false) => {
+                // LDM(2)
+                /*
+                MemoryAccess(B-bit, E-bit)
+                if ConditionPassed(cond) then
+                    address = start_address
+                    for i = 0 to 14
+                        if register_list[i] == 1
+                            Ri_usr = Memory[address,4]
+                            address = address + 4
+                    assert end_address == address - 4
+                */
+                let (start_address, end_address) =
+                    process_load_store_multiple_addressing_mode(emulator, instruction);
+
+                let register_list = instruction & 0xffff;
+
+                let mut address = start_address;
+                // TODO: fix this loop as well, 0..15 range is too error prone
+                // r0 - r14
+                for pos in 0..15 {
+                    if register_list.is_bit_set(pos) {
+                        let register = RegisterNames::try_from(pos).unwrap();
+                        let value = emulator.memory.read_word(address);
+                        emulator.cpu.set_register_value_in_operation_mode(
+                            register,
+                            value,
+                            OperationModes::USR,
+                        );
+                        address += 4;
+                    }
+                }
+                // TODO: properly implement this
+                assert_eq!(end_address, address - 4);
+            }
+            (true, true) => {
+                // LDM(3)
+                /*
+                MemoryAccess(B-bit, E-bit)
+                if ConditionPassed(cond) then
+                    address = start_address
+                    for i = 0 to 14
+                        if register_list[i] == 1 then
+                            Ri = Memory[address,4]
+                            address = address + 4
+
+                    if CurrentModeHasSPSR() then
+                        CPSR = SPSR
+                    else
+                        UNPREDICTABLE
+
+                    value = Memory[address,4]
+                    PC = value
+                    address = address + 4
+                    assert end_address == address - 4
+                */
+                let (start_address, end_address) =
+                    process_load_store_multiple_addressing_mode(emulator, instruction);
+
+                let register_list = instruction & 0xffff;
+
+                let mut address = start_address;
+                for pos in 0..15 {
+                    if register_list.is_bit_set(pos) {
+                        let register = RegisterNames::try_from(pos).unwrap();
+                        let value = emulator.memory.read_word(address);
+                        emulator.cpu.set_register_value(register, value);
+                        address += 4;
+                    }
+                }
+
+                if emulator.cpu.current_mode_has_spsr() {
+                    let spsr_value = emulator.cpu.get_register_value(spsr);
+                    emulator.cpu.set_register_value(cpsr, spsr_value);
+                } else {
+                    panic!("LDM(3): UNPREDICTABLE");
+                }
+
+                let value = emulator.memory.read_word(address);
+                emulator.cpu.set_register_value(r15, value);
+                address += 4;
+
+                // TODO: properly implement this
+                assert_eq!(end_address, address - 4);
+            }
+        }
+
         1
     }
 

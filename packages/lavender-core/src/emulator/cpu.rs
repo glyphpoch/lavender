@@ -101,10 +101,19 @@ impl Arm7Tdmi {
     }
 
     pub fn set_register_value(&mut self, name: RegisterNames, value: u32) {
+        let mode = self.get_operation_mode().unwrap();
+
+        self.set_register_value_in_operation_mode(name, value, mode);
+    }
+
+    pub fn set_register_value_in_operation_mode(
+        &mut self,
+        name: RegisterNames,
+        value: u32,
+        mode: OperationModes,
+    ) {
         use OperationModes::*;
         use RegisterNames::*;
-
-        let mode = self.get_operation_mode().unwrap();
 
         match (name, mode) {
             (r0, _) => self.registers.r0 = value,

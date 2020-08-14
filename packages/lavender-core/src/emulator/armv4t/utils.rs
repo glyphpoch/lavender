@@ -344,7 +344,6 @@ pub fn process_misc_addressing_mode(
 pub fn process_load_store_multiple_addressing_mode(
     emulator: &mut Emulator,
     instruction: u32,
-    register_list: u32,
 ) -> (u32, u32) {
     #[derive(TryFromPrimitive)]
     #[repr(u32)]
@@ -365,24 +364,26 @@ pub fn process_load_store_multiple_addressing_mode(
     let base_address_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
     let base_address = emulator.cpu.get_register_value(base_address_register);
 
+    let register_list = instruction & 0xffff;
+
     let mut num_registers = 0;
-    for pos in 0..15 {
+    // TODO: make this less hacky looking
+    // r0-r15
+    for pos in 0..16 {
         if register_list.is_bit_set(pos) {
             num_registers += 1;
         }
     }
 
     let offset_address = match addressing_mode {
-        AddressingMode::IA | AddressingMode::IB => {
-            base_address + (num_registers * 4)
-        },
-        AddressingMode::DA | AddressingMode::DB => {
-            base_address - (num_registers * 4)
-        }
+        AddressingMode::IA | AddressingMode::IB => base_address + (num_registers * 4),
+        AddressingMode::DA | AddressingMode::DB => base_address - (num_registers * 4),
     };
 
     if instruction.is_bit_set(21) {
-        emulator.cpu.set_register_value(base_address_register, offset_address);
+        emulator
+            .cpu
+            .set_register_value(base_address_register, offset_address);
     }
 
     match addressing_mode {
@@ -394,7 +395,7 @@ pub fn process_load_store_multiple_addressing_mode(
                 Rn = Rn + (Number_Of_Set_Bits_In(register_list) * 4)
             */
             (base_address, offset_address - 4)
-        },
+        }
         AddressingMode::IB => {
             /*
             start_address = Rn + 4
@@ -403,7 +404,7 @@ pub fn process_load_store_multiple_addressing_mode(
                 Rn = Rn + (Number_Of_Set_Bits_In(register_list) * 4)
             */
             (base_address + 4, offset_address)
-        },
+        }
         AddressingMode::DA => {
             /*
             start_address = Rn - (Number_Of_Set_Bits_In(register_list) * 4) + 4
@@ -412,7 +413,7 @@ pub fn process_load_store_multiple_addressing_mode(
                 Rn = Rn - (Number_Of_Set_Bits_In(register_list) * 4)
             */
             (offset_address + 4, base_address)
-        },
+        }
         AddressingMode::DB => {
             /*
             start_address = Rn - (Number_Of_Set_Bits_In(register_list) * 4)
