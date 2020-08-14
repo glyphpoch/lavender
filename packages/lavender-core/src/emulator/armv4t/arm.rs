@@ -1263,21 +1263,16 @@ pub mod instructions {
             |operand_register_value, shifter_operand, carry_amount| -> u32 {
                 shifter_operand
                     .wrapping_sub(operand_register_value)
-                    .wrapping_sub(carry_amount)
+                    .wrapping_sub(carry_amount ^ 1) // TODO: hack...
             },
-            |emulator,
-             operand_register_value,
-             shifter_operand,
-             carry_amount,
-             shifter_carry_out,
-             result| {
+            |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
                 emulator.cpu.set_nzcv(
                     result.is_bit_set(31),
                     result == 0,
                     not_borrow_from_with_carry(
                         shifter_operand,
                         operand_register_value,
-                        carry_amount,
+                        carry_amount ^ 1,
                     ), // c: NOT BorrowFrom
                     substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
                 );
@@ -1303,50 +1298,28 @@ pub mod instructions {
                 V Flag = OverflowFrom(Rn - shifter_operand - NOT(C Flag))
         */
 
-        let carry_amount = if !emulator.cpu.get_c() { 1 } else { 0 };
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
-
-        let result = emulator
-            .cpu
-            .get_register_value(operand_register)
-            .wrapping_sub(shifter_operand)
-            .wrapping_sub(carry_amount);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "SBC",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, carry_amount| -> u32 {
+                operand_register_value
+                    .wrapping_sub(shifter_operand)
+                    .wrapping_sub(carry_amount ^ 0x1) // TODO: hack
+            },
+            |emulator, operand_register_value, shifter_operand, carry_amount, _, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    not_borrow_from_with_carry(
+                        operand_register_value,
+                        shifter_operand,
+                        carry_amount ^ 0x1,
+                    ), // c: NOT BorrowFrom
+                    substraction_overflow(operand_register_value, shifter_operand, result), // v: unaffected
                 );
-            } else {
-                panic!("SBC: unpredictable");
-            }
-        } else if should_update_flags {
-            let tmp_carry = if emulator.cpu.get_c() { 1 } else { 0 };
-            // Update flags if necessary
-            emulator.cpu.set_nzcv(
-                result.is_bit_set(31),
-                result == 0,
-                // TODO: clean this up
-                (emulator.cpu.get_register_value(operand_register) as u64)
-                    .wrapping_add((!shifter_operand) as u64 + tmp_carry as u64)
-                    > 0xFFFF_FFFF, // c: NOT BorrowFrom
-                substraction_overflow(
-                    emulator.cpu.get_register_value(operand_register),
-                    shifter_operand,
-                    result,
-                ), // v: signed overflow occured
-            );
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         1
     }
