@@ -48,10 +48,18 @@ impl Arm7Tdmi {
     }
 
     pub fn get_register_value(&self, name: RegisterNames) -> u32 {
+        let mode = self.get_operation_mode().unwrap();
+
+        self.get_register_value_in_operation_mode(name, mode)
+    }
+
+    pub fn get_register_value_in_operation_mode(
+        &self,
+        name: RegisterNames,
+        mode: OperationModes,
+    ) -> u32 {
         use OperationModes::*;
         use RegisterNames::*;
-
-        let mode = self.get_operation_mode().unwrap();
 
         match (name, mode) {
             // General purpose registers

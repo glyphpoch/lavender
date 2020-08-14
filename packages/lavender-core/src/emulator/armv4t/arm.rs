@@ -682,7 +682,7 @@ pub mod instructions {
         panic!("LDC: Undefined instruction");
     }
 
-    /// Load multiple
+    /// Load Multiple
     pub fn ldm(emulator: &mut Emulator, instruction: u32) -> u32 {
         match (instruction.is_bit_set(22), instruction.is_bit_set(15)) {
             (false, _) => {
@@ -1611,7 +1611,98 @@ pub mod instructions {
     }
 
     /// Store Multiple
-    pub fn stm(_emulator: &mut Emulator, _instruction: u32) -> u32 {
+    pub fn stm(emulator: &mut Emulator, instruction: u32) -> u32 {
+        // TODO: If Rn == R15 -> UNPREDICTABLE
+
+        // TODO: simplify this, the two impls are copy-pastes with a single line difference
+        match instruction.is_bit_set(22) {
+            false => {
+                // STM(1)
+                /*
+                MemoryAccess(B-bit, E-bit)
+                processor_id = ExecutingProcessor()
+                if ConditionPassed(cond) then
+                    address = start_address
+                    for i = 0 to 15
+                        if register_list[i] == 1 then
+                            Memory[address,4] = Ri
+                            address = address + 4
+                            if Shared(address) then   /* from ARMv6 */
+                                physical_address = TLB(address)
+                                ClearExclusiveByAddress(physical_address,processor_id,4)
+                                /* See Summary of operation on page A2-49 */
+                    assert end_address == address - 4
+                */
+                let (start_address, end_address) =
+                    process_load_store_multiple_addressing_mode(emulator, instruction);
+
+                let register_list = instruction & 0xffff;
+
+                let mut address = start_address;
+
+                for pos in 0..16 {
+                    if register_list.is_bit_set(pos) {
+                        let register = RegisterNames::try_from(pos).unwrap();
+                        let value = emulator.cpu.get_register_value(register);
+
+                        // WARN: See `Reading the program counter A2-9`
+                        // TODO: the above also needs to be considered in STR implementation
+                        // When STR or STM store R15 the the address that it contains is
+                        // incremented by either 0x8 or 0xC. GBA seems to always increment it by 12
+                        // (search for `PC+12` in GBATEK docs), at least for load/store instructions.
+                        let value = if register == r15 { value + 12 } else { value };
+
+                        emulator.memory.write_word(address, value);
+                        address += 4;
+                    }
+                }
+
+                assert_eq!(end_address, address - 4);
+            }
+            true => {
+                // STM(2)
+                /*
+                MemoryAccess(B-bit, E-bit)
+                processor_id = ExecutingProcessor()
+                if ConditionPassed(cond) then
+                    address = start_address
+                    for i = 0 to 15
+                        if register_list[i] == 1
+                            Memory[address,4] = Ri_usr
+                            address = address + 4
+                            if Shared(address) then    /* from ARMv6 */
+                                physical_address = TLB(address)
+                                ClearExclusiveByAddress(physical_address,processor_id,4)
+                                /* See Summary of operation on page A2-49 */
+                    assert end_address == address - 4
+                */
+                // Base address is always read from the current processor mode register, not the
+                // User mode registers.
+                let (start_address, end_address) =
+                    process_load_store_multiple_addressing_mode(emulator, instruction);
+
+                let register_list = instruction & 0xffff;
+
+                let mut address = start_address;
+
+                for pos in 0..16 {
+                    if register_list.is_bit_set(pos) {
+                        let register = RegisterNames::try_from(pos).unwrap();
+                        let value = emulator
+                            .cpu
+                            .get_register_value_in_operation_mode(register, OperationModes::USR);
+
+                        let value = if register == r15 { value + 12 } else { value };
+
+                        emulator.memory.write_word(address, value);
+                        address += 4;
+                    }
+                }
+
+                assert_eq!(end_address, address - 4);
+            }
+        }
+
         1
     }
 

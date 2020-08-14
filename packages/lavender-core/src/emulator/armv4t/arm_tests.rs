@@ -2930,6 +2930,154 @@ fn decode_stm() {
 }
 
 #[test]
+fn behavior_stm_1() {
+    // Increment after
+    {
+        let mut emulator = Emulator::dummy();
+
+        emulator.cpu.set_register_value(r0, 0x0300_0000);
+        emulator.cpu.set_register_value(r2, 0x11aa_aa11); // r2
+        emulator.cpu.set_register_value(r4, 0x22bb_bb22); // r4
+        emulator.cpu.set_register_value(r6, 0x33cc_cc33); // r6
+        emulator.cpu.set_register_value(r8, 0x44dd_dd44); // r8
+        emulator.cpu.set_register_value(r11, 0x55ee_ee55); // r11
+        emulator.cpu.set_register_value(r12, 0x66ff_ff66); // r12
+        emulator.cpu.set_register_value(r13, 0x7700_0177); // r13
+        emulator.cpu.set_register_value(r14, 0x8800_0288); // r14
+
+        //   cond    P U W  Rn   register_list
+        // 0x1110_1000_1000_0000_0111_1001_0101_0100 - stmia [r0],r2,r4,r6,r8,r11-r14
+        process_instruction(&mut emulator, 0xE880_7954);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0000);
+
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0x11aa_aa11);
+        assert_eq!(emulator.memory.read_word(0x0300_0004), 0x22bb_bb22);
+        assert_eq!(emulator.memory.read_word(0x0300_0008), 0x33cc_cc33);
+        assert_eq!(emulator.memory.read_word(0x0300_000C), 0x44dd_dd44);
+        assert_eq!(emulator.memory.read_word(0x0300_0010), 0x55ee_ee55);
+        assert_eq!(emulator.memory.read_word(0x0300_0014), 0x66ff_ff66);
+        assert_eq!(emulator.memory.read_word(0x0300_0018), 0x7700_0177);
+        assert_eq!(emulator.memory.read_word(0x0300_001C), 0x8800_0288);
+    }
+
+    // Increment before + write back bit set
+    {
+        let mut emulator = Emulator::dummy();
+
+        emulator.cpu.set_register_value(r0, 0x0300_0000);
+        emulator.cpu.set_register_value(r3, 0x11aa_aa11); // r3
+        emulator.cpu.set_register_value(r4, 0x22bb_bb22); // r4
+        emulator.cpu.set_register_value(r5, 0x33cc_cc33); // r5
+
+        //   cond    P U W  Rn   register_list
+        // 0x1110_1001_1010_0000_0000_0000_0011_1000 - stmib [r0]!,r3-r5
+        process_instruction(&mut emulator, 0xE9A0_0038);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_000C);
+
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0x0);
+        assert_eq!(emulator.memory.read_word(0x0300_0004), 0x11aa_aa11);
+        assert_eq!(emulator.memory.read_word(0x0300_0008), 0x22bb_bb22);
+        assert_eq!(emulator.memory.read_word(0x0300_000C), 0x33cc_cc33);
+    }
+
+    // Decrement after + PC register
+    {
+        let mut emulator = Emulator::dummy();
+
+        // DA addressing mode will perform the following calculation to get the start address:
+        // 0x0300_0008 - (3 * 4) + 4 = 0x0300_0000
+        // (3 being the number of bits, set in the register_list)
+        emulator.cpu.set_register_value(r0, 0x0300_0008);
+
+        emulator.cpu.set_register_value(r4, 0x11aa_aa11); // r4
+        emulator.cpu.set_register_value(r8, 0x22bb_bb22); // r8
+        emulator.cpu.set_register_value(r15, 0x33cc_cc00); // r15
+
+        //   cond    P U W  Rn   register_list
+        // 0x1110_1000_0000_0000_1000_0001_0001_0000 - stmda [r0],r4,r8,r15
+        process_instruction(&mut emulator, 0xE800_8110);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0008);
+
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0x11aa_aa11);
+        assert_eq!(emulator.memory.read_word(0x0300_0004), 0x22bb_bb22);
+        // WARN: See STM implementation
+        assert_eq!(emulator.memory.read_word(0x0300_0008), 0x33cc_cc0c);
+    }
+
+    // Decrement before + write back bit set
+    {
+        let mut emulator = Emulator::dummy();
+
+        // DA addressing mode will perform the following calculation to get the start address:
+        // 0x0300_0014 - (5 * 4) = 0x0300_0000
+        // (5 being the number of bits set in the register_list)
+        emulator.cpu.set_register_value(r0, 0x0300_0014);
+
+        emulator.cpu.set_register_value(r3, 0x11aa_aa11); // r3
+        emulator.cpu.set_register_value(r7, 0x22bb_bb22); // r7
+        emulator.cpu.set_register_value(r10, 0x33cc_cc33); // r10
+        emulator.cpu.set_register_value(r12, 0x44dd_dd44); // r12
+        emulator.cpu.set_register_value(r14, 0x55ee_ee55); // r14
+
+        //   cond    P U W  Rn   register_list
+        // 0x1110_1001_0010_0000_0101_0100_1000_1000 - stmdb [r0]!,r3,r7,r10,r12,r14
+        process_instruction(&mut emulator, 0xE920_5488);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0000);
+
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0x11aa_aa11);
+        assert_eq!(emulator.memory.read_word(0x0300_0004), 0x22bb_bb22);
+        assert_eq!(emulator.memory.read_word(0x0300_0008), 0x33cc_cc33);
+        assert_eq!(emulator.memory.read_word(0x0300_000C), 0x44dd_dd44);
+        assert_eq!(emulator.memory.read_word(0x0300_0010), 0x55ee_ee55);
+    }
+}
+
+#[test]
+fn behavior_stm_2() {
+    // Decrement before
+    {
+        let mut emulator = Emulator::dummy();
+
+        // Switch to User mode for setting register values.
+        emulator.cpu.set_operation_mode(OperationModes::USR);
+
+        // DA addressing mode will perform the following calculation to get the start address:
+        // 0x0300_0014 - (5 * 4) = 0x0300_0000
+        // (5 being the number of bits set in the register_list)
+        emulator.cpu.set_register_value(r0, 0x0300_0014);
+
+        emulator.cpu.set_register_value(r3, 0x11aa_aa11); // r3
+        emulator.cpu.set_register_value(r7, 0x22bb_bb22); // r7
+        emulator.cpu.set_register_value(r10, 0x33cc_cc33); // r10
+        emulator.cpu.set_register_value(r13, 0x44dd_dd44); // r13
+        emulator.cpu.set_register_value(r14, 0x55ee_ee55); // r14
+
+        // Switch to Supervisor mode for executing the instruction
+        emulator.cpu.set_operation_mode(OperationModes::SVC);
+
+        // Overwrite registers specific to Supervisor mode
+        emulator.cpu.set_register_value(r13, 0x66ff_ff66);
+        emulator.cpu.set_register_value(r14, 0x7700_0177);
+
+        //   cond    P U W  Rn   register_list
+        // 0x1110_1001_0100_0000_0110_0100_1000_1000 - stmdb [r0],r3,r7,r10,r13,r14^
+        process_instruction(&mut emulator, 0xE940_6488);
+
+        assert_eq!(emulator.cpu.get_register_value(r0), 0x0300_0014);
+
+        assert_eq!(emulator.memory.read_word(0x0300_0000), 0x11aa_aa11);
+        assert_eq!(emulator.memory.read_word(0x0300_0004), 0x22bb_bb22);
+        assert_eq!(emulator.memory.read_word(0x0300_0008), 0x33cc_cc33);
+        assert_eq!(emulator.memory.read_word(0x0300_000C), 0x44dd_dd44);
+        assert_eq!(emulator.memory.read_word(0x0300_0010), 0x55ee_ee55);
+    }
+}
+
+#[test]
 fn decode_str() {
     assert_eq!(decode_instruction(0x0_40_000_0_0) as usize, str as usize);
 }
