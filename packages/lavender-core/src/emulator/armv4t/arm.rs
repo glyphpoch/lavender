@@ -1256,41 +1256,33 @@ pub mod instructions {
                 V Flag = OverflowFrom(shifter_operand - Rn - NOT(C Flag))
         */
 
-        let carry_amount = if !emulator.cpu.get_c() { 1 } else { 0 };
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_register_value = emulator.cpu.get_register_value(operand_register);
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
-
-        let result = shifter_operand
-            .wrapping_sub(operand_register_value)
-            .wrapping_sub(carry_amount);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "RSC",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, carry_amount| -> u32 {
+                shifter_operand
+                    .wrapping_sub(operand_register_value)
+                    .wrapping_sub(carry_amount)
+            },
+            |emulator,
+             operand_register_value,
+             shifter_operand,
+             carry_amount,
+             shifter_carry_out,
+             result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    not_borrow_from_with_carry(
+                        shifter_operand,
+                        operand_register_value,
+                        carry_amount,
+                    ), // c: NOT BorrowFrom
+                    substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
                 );
-            } else {
-                panic!("RSC: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                result.is_bit_set(31),
-                result == 0,
-                // TODO: verify that this is ok
-                (shifter_operand as u64) >= (operand_register_value as u64 + carry_amount as u64), // c: NOT BorrowFrom
-                substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
-            );
-        }
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
+            },
+        );
 
         1
     }

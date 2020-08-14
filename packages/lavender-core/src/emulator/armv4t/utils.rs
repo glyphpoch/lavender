@@ -517,6 +517,12 @@ pub fn not_borrow_from(first: u32, second: u32) -> bool {
     first >= second
 }
 
+#[inline]
+pub fn not_borrow_from_with_carry(first: u32, second: u32, carry_amount: u32) -> bool {
+    // TODO: document, optimise
+    (first as u64) >= (second as u64 + carry_amount as u64)
+}
+
 pub fn get_data_processing_operands(
     emulator: &mut Emulator,
     instruction: u32,
