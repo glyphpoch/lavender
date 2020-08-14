@@ -1640,40 +1640,22 @@ pub mod instructions {
                 V Flag = OverflowFrom(Rn - shifter_operand)
         */
 
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        let (destination_register, operand_register_value, shifter_operand_value, _) =
-            get_data_processing_operands(emulator, instruction);
-
-        // The overflow flag is only relevant when dealing with signed numbers. ALU of course
-        // doesn't care but Rust's unsigned `overflowing_sub` does not always return the overflow
-        // flag when you would expect it to be set.
-        let (value, overflow) =
-            (operand_register_value as i32).overflowing_sub(shifter_operand_value as i32);
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, value as u32);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "SUB",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                operand_register_value.wrapping_sub(shifter_operand)
+            },
+            |emulator, operand_register_value, shifter_operand, _, _, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    not_borrow_from(operand_register_value, shifter_operand), // c: NOT BorrowFrom
+                    substraction_overflow(operand_register_value, shifter_operand, result), // v: overflow
                 );
-            } else {
-                // Supposedly unpredictable behaviour but the CPU might be able to deal with it, in
-                // a perfectly predictable way... Worry about it later, if it actually ever happens.
-                panic!("SUB: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                value >> 31 & 1 > 0,
-                value == 0,
-                operand_register_value >= shifter_operand_value,
-                overflow,
-            );
-        }
+            },
+        );
 
         1
     }
