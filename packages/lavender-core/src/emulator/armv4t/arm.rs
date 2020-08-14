@@ -1200,6 +1200,7 @@ pub mod instructions {
                 );
             },
         );
+
         1
     }
 
@@ -1219,38 +1220,22 @@ pub mod instructions {
                 V Flag = OverflowFrom(shifter_operand - Rn)
         */
 
-        let should_update_flags = instruction >> 20 & 1 > 0;
-
-        // Get the instruction operands
-        let destination_register = RegisterNames::try_from(instruction >> 12 & 0xf).unwrap();
-        let operand_register = RegisterNames::try_from(instruction >> 16 & 0xf).unwrap();
-        let operand_register_value = emulator.cpu.get_register_value(operand_register);
-        let (shifter_operand, _) = process_shifter_operand_tmp(emulator, instruction);
-
-        let result = shifter_operand.wrapping_sub(operand_register_value);
-
-        emulator
-            .cpu
-            .set_register_value(destination_register, result);
-
-        if should_update_flags && destination_register == RegisterNames::r15 {
-            if emulator.cpu.current_mode_has_spsr() {
-                emulator.cpu.set_register_value(
-                    RegisterNames::cpsr,
-                    emulator.cpu.get_register_value(RegisterNames::spsr),
+        data_processing_instruction_wrapper(
+            "RSB",
+            emulator,
+            instruction,
+            |operand_register_value, shifter_operand, _| -> u32 {
+                shifter_operand.wrapping_sub(operand_register_value)
+            },
+            |emulator, operand_register_value, shifter_operand, _, shifter_carry_out, result| {
+                emulator.cpu.set_nzcv(
+                    result.is_bit_set(31),
+                    result == 0,
+                    not_borrow_from(shifter_operand, operand_register_value), // c: NOT BorrowFrom
+                    substraction_overflow(shifter_operand, operand_register_value, result), // v: unaffected
                 );
-            } else {
-                panic!("RSB: unpredictable");
-            }
-        } else if should_update_flags {
-            emulator.cpu.set_nzcv(
-                result.is_bit_set(31),
-                result == 0,
-                // TODO: is this correct? in some places this is implemented incorrectly
-                shifter_operand >= operand_register_value, // c: NOT BorrowFrom
-                substraction_overflow(shifter_operand, operand_register_value, result), // v: signed overflow occured
-            );
-        }
+            },
+        );
 
         1
     }
