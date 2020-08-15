@@ -338,6 +338,23 @@ mod internal {
     // semaphore ins wrapper (swp, swpb)
     // exception generating wrapper (swi)
     // coprocessor ins wrapper
+    //
+    // TODO: someday...
+    // macro_rules! test_ins {
+    // ($emulator:expr, $instruction:expr, $dest_reg:ident, $shifter_op:ident, $opdef:expr) => {{
+    //     let mut $dest_reg = $emulator.trailing_zeros();
+    //
+    //     let $shifter_op = $instruction & 0xfff;
+    //
+    //     $opdef
+    // }}
+    //
+    // test_ins!(10u32, 0xE011_0132, dest_reg, shifter_op, {
+    //     println!("{:x}", dest_reg);
+    //     println!("{:x}", shifter_op);
+    //     dest_reg = shifter_op;
+    //     println!("{:x}", dest_reg);
+    // })
 }
 
 /// A module containing functions which implement all of the 32-bit ARM v4T
