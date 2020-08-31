@@ -512,6 +512,15 @@ pub fn carry_from(first: u32, second: u32) -> bool {
 }
 
 #[inline]
+pub fn carry_from_with_carry(first: u32, second: u32, carry_amount: u32) -> bool {
+    // TODO: document, optimise
+    (first as u64)
+        .wrapping_add(second as u64)
+        .wrapping_add(carry_amount as u64)
+        > 0xFFFF_FFFF
+}
+
+#[inline]
 pub fn not_borrow_from(first: u32, second: u32) -> bool {
     // TODO: document, optimise
     first >= second
