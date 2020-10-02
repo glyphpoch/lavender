@@ -326,14 +326,14 @@ mod internal {
     }
 
     macro_rules! instruction_format_6 {
-        ($emulator:expr, $instruction:expr, $operation:expr, $operation_register:expr) => {{
+        ($emulator:expr, $instruction:expr, $first_operand:ident, $immed_8:ident, $operation:expr, $operation_register:expr) => {{
             let instruction = $instruction as u32;
             let destination_register = RegisterNames::try_from(instruction & 0x7).unwrap();
-            let immed_8 = instruction & 0xff;
+            let $immed_8 = instruction & 0xff;
 
-            let first_operand = $emulator.cpu.get_register_value($operation_register);
+            let $first_operand = $emulator.cpu.get_register_value($operation_register);
 
-            let result = $operation(first_operand, immed_8);
+            let result = $operation;
 
             $emulator
                 .cpu
@@ -499,9 +499,9 @@ pub mod instructions {
         instruction_format_6!(
             emulator,
             instruction,
-            |first_operand: u32, immed_8| -> u32 {
-                (first_operand & 0xFFFF_FFFC).wrapping_add(immed_8 << 2)
-            },
+            first_operand,
+            immed_8,
+            { (first_operand & 0xFFFF_FFFC).wrapping_add(immed_8 << 2) },
             r15
         );
 
@@ -513,7 +513,9 @@ pub mod instructions {
         instruction_format_6!(
             emulator,
             instruction,
-            |first_operand: u32, immed_8| -> u32 { first_operand.wrapping_add(immed_8 << 2) },
+            first_operand,
+            immed_8,
+            { first_operand.wrapping_add(immed_8 << 2) },
             r13
         );
 
@@ -603,10 +605,37 @@ pub mod instructions {
         1
     }
 
-    pub fn b1(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+    /// Branch
+    pub fn b1(emulator: &mut Emulator, instruction: u16) -> u32 {
+        use crate::emulator::cpu::ConditionCodes;
+
+        let condition = ConditionCodes::try_from((instruction >> 8 & 0xf) as u32).unwrap();
+
+        if !emulator.cpu.check_condition(condition) {
+            let signed_immed_8 = (instruction & 0xff) as i32;
+            let signed_immed_8 = ((signed_immed_8 << 24) >> 23) as u32;
+
+            let pc_value = emulator.cpu.get_register_value(r15);
+
+            emulator
+                .cpu
+                .set_register_value(r15, pc_value.wrapping_add(signed_immed_8));
+        }
+
         1
     }
-    pub fn b2(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+
+    /// Unconditional Branch
+    pub fn b2(emulator: &mut Emulator, instruction: u16) -> u32 {
+        let signed_immed_11 = (instruction & 0x7ff) as i32;
+        let signed_immed_11 = ((signed_immed_11 << 21) >> 20) as u32;
+
+        let pc_value = emulator.cpu.get_register_value(r15);
+
+        emulator
+            .cpu
+            .set_register_value(r15, pc_value.wrapping_add(signed_immed_11));
+
         1
     }
 
