@@ -325,6 +325,7 @@ mod internal {
         }};
     }
 
+    // TODO: convert all format macros to use ident + expression blocks, instead of closures
     macro_rules! instruction_format_6 {
         ($emulator:expr, $instruction:expr, $first_operand:ident, $immed_8:ident, $operation:expr, $operation_register:expr) => {{
             let instruction = $instruction as u32;
@@ -658,10 +659,76 @@ pub mod instructions {
         1
     }
 
-    pub fn bl(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+    /// Branch with Link
+    pub fn bl(emulator: &mut Emulator, instruction: u16) -> u32 {
+        /*
+        if H == 10 then
+            LR = PC + (SignExtend(offset_11) << 12)
+        else if H == 11 then
+            PC = LR + (offset_11 << 1)
+            LR = (address of next instruction) | 1
+        else if H == 01 then
+            PC = (LR + (offset_11 << 1)) AND 0xFFFFFFFC
+            LR = (address of next instruction) | 1C
+            PSR T bit = 0
+        */
+
+        // TODO H == 01 can only be found in ARMv5 and above
+        // TODO: branch mode (H) parsing could be improved here
+
+        let instruction = instruction as u32;
+
+        let offset_11 = instruction & 0x7FF;
+        let h = instruction >> 11 & 0x3;
+
+        let pc = emulator.cpu.get_register_value(r15);
+
+        match h {
+            0b10 => {
+                // TODO: use a helper to sign extend the offset (this is done in multiple places)
+                let offset_11 = (offset_11 << 21) >> 9;
+                emulator
+                    .cpu
+                    .set_register_value(r14, pc.wrapping_add(offset_11));
+            }
+            0b11 => {
+                let lr = emulator.cpu.get_register_value(r14);
+                emulator.cpu.set_register_value(r15, lr + (offset_11 << 1));
+
+                // TODO: verify that this is okay
+                let address_of_next_instruction = pc.wrapping_add(2);
+                emulator
+                    .cpu
+                    .set_register_value(r14, address_of_next_instruction | 1);
+            }
+            _ => {
+                unreachable!("H in ARMv4 can only have the forms which are implemented above");
+            }
+        }
+
         1
     }
-    pub fn bx(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+
+    /// Branch and Exchange
+    pub fn bx(emulator: &mut Emulator, instruction: u16) -> u32 {
+        /*
+        CPSR T bit = Rm[0]
+        PC = Rm[31:1] << 1
+        */
+
+        let instruction = instruction as u32;
+        let source_register = RegisterNames::try_from(instruction >> 3 & 0xf).unwrap();
+
+        let branch_target_address = emulator.cpu.get_register_value(source_register);
+
+        emulator
+            .cpu
+            .set_thumb_bit(branch_target_address.is_bit_set(0));
+
+        let branch_target_address = (branch_target_address & 0xFFFF_FFFE) << 1;
+
+        emulator.cpu.set_register_value(r15, branch_target_address);
+
         1
     }
 
@@ -761,12 +828,45 @@ pub mod instructions {
         1
     }
 
+    macro_rules! load_store_format_1 {
+        ($emulator:expr, $instruction:expr, $source_register_value:ident, $immed_5:ident, $destination_register:ident, $instruction_implementation:expr) => {
+            let instruction = $instruction as u32;
+
+            let source_register = RegisterNames::try_from(instruction >> 3 & 0x3).unwrap();
+            let $source_register_value = $emulator.cpu.get_register_value(source_register);
+
+            let $destination_register = RegisterNames::try_from(instruction & 0x3).unwrap();
+
+            let $immed_5 = (instruction >> 6) & 0x1F;
+
+            $instruction_implementation;
+        };
+    }
+
     pub fn ldmia(_emulator: &mut Emulator, _instruction: u16) -> u32 {
         1
     }
-    pub fn ldr1(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+
+    /// Load Register
+    pub fn ldr1(emulator: &mut Emulator, instruction: u16) -> u32 {
+        // TODO: can the macro be simplified if we pass in the size of the data that we want to
+        // load/store?
+        load_store_format_1!(
+            emulator,
+            instruction,
+            source_register_value,
+            immed_5,
+            destination_register,
+            {
+                let address = source_register_value.wrapping_add(immed_5 << 2);
+                let data = emulator.memory.read_word(address);
+                emulator.cpu.set_register_value(destination_register, data);
+            }
+        );
+
         1
     }
+
     pub fn ldr2(_emulator: &mut Emulator, _instruction: u16) -> u32 {
         1
     }
@@ -776,7 +876,24 @@ pub mod instructions {
     pub fn ldr4(_emulator: &mut Emulator, _instruction: u16) -> u32 {
         1
     }
-    pub fn ldrb1(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+
+    /// Load Register Byte
+    pub fn ldrb1(emulator: &mut Emulator, instruction: u16) -> u32 {
+        load_store_format_1!(
+            emulator,
+            instruction,
+            source_register_value,
+            immed_5,
+            destination_register,
+            {
+                let address = source_register_value.wrapping_add(immed_5);
+                let data = emulator.memory.read_byte(address);
+                emulator
+                    .cpu
+                    .set_register_value(destination_register, data as u32);
+            }
+        );
+
         1
     }
     pub fn ldrb2(_emulator: &mut Emulator, _instruction: u16) -> u32 {
@@ -914,6 +1031,7 @@ pub mod instructions {
     }
 
     pub fn mov2(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+        // Encoded as ADD(1) DataProcessingInstruction format 2
         1
     }
 
@@ -1069,7 +1187,24 @@ pub mod instructions {
     pub fn stmia(_emulator: &mut Emulator, _instruction: u16) -> u32 {
         1
     }
-    pub fn str1(_emulator: &mut Emulator, _instruction: u16) -> u32 {
+
+    /// Store Register
+    pub fn str1(emulator: &mut Emulator, instruction: u16) -> u32 {
+        // TODO: rename register variables, source register is base_address reg, destination is
+        // actually the data source register...
+        load_store_format_1!(
+            emulator,
+            instruction,
+            source_register_value,
+            immed_5,
+            destination_register,
+            {
+                let address = source_register_value.wrapping_add(immed_5 << 2);
+                let data = emulator.cpu.get_register_value(destination_register);
+                emulator.memory.write_word(address, data);
+            }
+        );
+
         1
     }
     pub fn str2(_emulator: &mut Emulator, _instruction: u16) -> u32 {
